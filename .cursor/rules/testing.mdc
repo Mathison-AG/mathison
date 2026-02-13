@@ -1,10 +1,14 @@
+---
+description: E2E testing procedures, API curl commands, browser UI verification, full deployment flow testing, cleanup commands, and known test gotchas. Use when testing features, verifying changes, or running the E2E flow.
+globs: 
+alwaysApply: false
+---
+
 # Mathison — E2E Testing Guide
 
-> Verified on 2026-02-13. This is the repeatable testing procedure for the complete Mathison MVP.
+> Verified on 2026-02-13. Repeatable testing procedure for the complete Mathison MVP.
 
 ## Quick Start: Full E2E Test
-
-Run this checklist at the start of any testing session:
 
 ### 1. Infrastructure
 
@@ -162,8 +166,6 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/deployments
 
 ## Full E2E Deployment Flow
 
-This is the critical path that tests the entire stack:
-
 ### Prerequisites
 
 - All infrastructure running (Docker, kind, dev server, worker)
@@ -200,18 +202,16 @@ PGPASSWORD=mathison psql -h localhost -p 5433 -U mathison -d mathison \
 
 ### Loading Images into Kind
 
-Kind clusters can't pull from Docker Hub without internet or with rate limits. Pre-load images:
-
 ```bash
 # Pull + load Redis
 docker pull bitnami/redis:latest
 kind load docker-image bitnami/redis:latest --name mathison-dev
 
-# Pull + load PostgreSQL (for postgres deployments)
+# Pull + load PostgreSQL
 docker pull bitnami/postgresql:latest
 kind load docker-image bitnami/postgresql:latest --name mathison-dev
 
-# Pull + load MinIO (for minio deployments)
+# Pull + load MinIO
 docker pull bitnami/minio:latest
 kind load docker-image bitnami/minio:latest --name mathison-dev
 ```
@@ -246,14 +246,14 @@ clean();"
 
 ## Known Issues & Gotchas
 
-| Issue                      | Details                                                                                | Workaround                                                                              |
-| -------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Worker env loading         | Static ES imports hoist above `dotenv.config()`                                        | Worker uses bootstrap pattern: `index.ts` loads env, then dynamically imports `main.ts` |
-| Bitnami image tags         | Pinned chart versions reference image tags that get removed from Docker Hub over time  | Don't pin `chartVersion` for test recipes, or use `NULL` to get latest                  |
-| Image pull in kind         | Kind can't pull from Docker Hub easily                                                 | Pre-load images with `kind load docker-image`                                           |
-| Card navigation            | Fixed in this session — nested `<a>` tags in DeploymentCard, inline Link in RecipeCard | Links now use `className="block"` and inner links replaced with `<span>` + `onClick`    |
-| Next.js middleware warning | "middleware file convention is deprecated"                                             | Cosmetic only, middleware still works                                                   |
-| Turbopack root warning     | Multiple lockfile detection                                                            | Mitigated with `turbopack.root: "."` in next.config.ts                                  |
+| Issue | Details | Workaround |
+|-------|---------|------------|
+| Worker env loading | Static ES imports hoist above `dotenv.config()` | Worker uses bootstrap pattern: `index.ts` loads env, then dynamically imports `main.ts` |
+| Bitnami image tags | Pinned chart versions reference image tags that get removed from Docker Hub | Don't pin `chartVersion` for test recipes, or use `NULL` to get latest |
+| Image pull in kind | Kind can't pull from Docker Hub easily | Pre-load images with `kind load docker-image` |
+| Card navigation | Fixed — nested `<a>` tags in DeploymentCard, inline Link in RecipeCard | Links now use `className="block"` and inner links replaced with `<span>` + `onClick` |
+| Next.js middleware warning | "middleware file convention is deprecated" | Cosmetic only, middleware still works |
+| Turbopack root warning | Multiple lockfile detection | Mitigated with `turbopack.root: "."` in next.config.ts |
 
 ---
 

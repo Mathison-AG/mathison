@@ -6,11 +6,11 @@ alwaysApply: true
 
 # Mathison — Coding Standards
 
-These patterns must stay consistent across all 11 build steps. Follow them in every session.
+Follow these patterns consistently across all code. They're enforced by the team and expected by TypeScript strict mode.
 
 ## TypeScript
 
-- `strict: true` — no `any` unless absolutely unavoidable (and add a `// eslint-disable-next-line` comment explaining why)
+- `strict: true` — no `any` unless absolutely unavoidable (add a comment explaining why)
 - Use `unknown` over `any` for untyped data, then narrow with Zod or type guards
 - Use `interface` for object shapes, `type` for unions/intersections/aliases
 - Export types from `src/types/` — never define shared types inline in components
@@ -22,7 +22,7 @@ These patterns must stay consistent across all 11 build steps. Follow them in ev
 import { NextResponse } from "next/server";
 
 // 2. Third-party libraries
-import { z } from "zod";
+import { z } from "zod/v4";
 import { streamText } from "ai";
 
 // 3. Internal absolute imports (@/ alias)
@@ -74,24 +74,31 @@ Rules:
 - Use `NextResponse.json()` not `new Response()`
 - Validate all inputs with Zod — never trust request body
 
-## Zod Validation in Routes
+## Zod v4 Validation in Routes
 
 ```typescript
+import { z } from "zod/v4";
+
 const bodySchema = z.object({
   name: z.string().min(1).max(100),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
 });
 
 // In the handler:
 const parsed = bodySchema.safeParse(await req.json());
 if (!parsed.success) {
   return NextResponse.json(
-    { error: "Invalid input", details: parsed.error.flatten() },
+    { error: "Invalid input", details: z.flattenError(parsed.error) },
     { status: 400 }
   );
 }
 const { name, config } = parsed.data;
 ```
+
+**Zod v4 specifics:**
+- Import from `"zod/v4"` (NOT `"zod"`)
+- `z.record()` requires 2 args: `z.record(z.string(), z.unknown())`
+- Error flattening: `z.flattenError(parsed.error)` (NOT `parsed.error.flatten()`)
 
 ## React Components
 
@@ -101,7 +108,6 @@ const { name, config } = parsed.data;
 - Use `function` declarations for components, not arrow functions
 
 ```typescript
-// Good
 interface RecipeCardProps {
   recipe: Recipe;
   onDeploy?: (slug: string) => void;
@@ -115,6 +121,7 @@ export function RecipeCard({ recipe, onDeploy }: RecipeCardProps) {
 ## Prisma Queries
 
 - Always use the singleton from `@/lib/db` — never instantiate `new PrismaClient()`
+- Import from `@/generated/prisma/client` (NOT `@prisma/client`)
 - Always scope tenant queries by `tenantId`:
   ```typescript
   prisma.deployment.findMany({
@@ -123,12 +130,19 @@ export function RecipeCard({ recipe, onDeploy }: RecipeCardProps) {
   ```
 - Use `select` or `include` explicitly — don't fetch everything
 - Raw SQL only for pgvector queries — use Prisma for everything else
+- Prisma JSON casts: `data.configSchema as unknown as Prisma.InputJsonValue`
 
 ## Error Messages
 
 - User-facing: clear, helpful, no internals ("Service not found" not "Prisma P2025")
 - Logs: include full error + context (`console.error("[deployService]", { recipeSlug, tenantId }, error)`)
 - Never expose stack traces, SQL queries, or internal IDs in API responses
+
+## User-facing Language
+
+- **Never expose K8s terminology in the UI**: No "Kubernetes", "K8s", "Helm", "pods", "namespaces", "clusters", "nodes", "YAML"
+- Translation: pod → instance/service, namespace → workspace, Helm chart → service template, container → service/app
+- Internal code keeps K8s/Helm terminology — only user-facing strings are neutralized
 
 ## File Naming
 
@@ -139,10 +153,12 @@ export function RecipeCard({ recipe, onDeploy }: RecipeCardProps) {
 
 ## Commits
 
-After completing each step:
+Use clear, descriptive commit messages:
 ```
-step XX: short description of what was built
+feat: short description of what was built
 
 - bullet points of key changes
-- note any decisions that affect later steps
+- note any decisions that affect other areas
 ```
+
+Prefixes: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `test:`

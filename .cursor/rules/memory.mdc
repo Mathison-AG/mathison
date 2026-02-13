@@ -1,193 +1,89 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
 # Agent Memory
 
-Persistent scratchpad for things learned during development. Read this every session. Update it as you go — add discoveries, gotchas, patterns that worked. Delete entries that are no longer relevant.
-
-## How to Use This File
-
-- **Add** when you discover something non-obvious that will save time later
-- **Delete** when an entry is no longer relevant (dependency upgraded, workaround no longer needed)
-- **Keep it lean** — this is loaded every session, so don't let it bloat. If something belongs in a task file or the decisions log, put it there instead.
+Persistent scratchpad for runtime knowledge. Read every session. Keep it lean — add discoveries, delete what's stale.
 
 ---
 
-## Gotchas & Workarounds
+## Critical: Things That Will Bite You
 
-- **Prisma 7 breaking changes**: `url` removed from `datasource` block in schema.prisma. URL now goes in `prisma.config.ts` using `defineConfig()`. Generator must be `"prisma-client"` (not `"prisma-client-js"`), with explicit `output` path.
-- **Prisma 7 import path**: Import `PrismaClient` from `@/generated/prisma/client` (NOT `@prisma/client`). The `@prisma/client` package no longer exports `PrismaClient` directly.
-- **Prisma 7 adapter required**: Must use `@prisma/adapter-pg` with `pg.Pool` to create the client. Pass `adapter` to `new PrismaClient({ adapter })`.
-- **Prisma config dotenv**: `prisma.config.ts` must explicitly load `.env.local` via `config({ path: ".env.local" })` from `dotenv` — Prisma CLI doesn't auto-load Next.js env files.
-- **Port conflict**: Postgres runs on port 5433 (not 5432) because another project (`aucm`) occupies 5432. All DATABASE_URL references use 5433.
-- **Zod v4**: Installed as `zod@4.3.6`. For imports use `import { z } from "zod/v4"` — the v4 subpath export.
+- **Prisma 7 import path**: `@/generated/prisma/client` — NOT `@prisma/client`. The old package no longer exports PrismaClient.
+- **Prisma 7 adapter required**: Must use `@prisma/adapter-pg` with `pg.Pool`. Pass `adapter` to `new PrismaClient({ adapter })`.
+- **Prisma config dotenv**: `prisma.config.ts` must explicitly load `.env.local` via `config({ path: ".env.local" })` — Prisma CLI doesn't auto-load Next.js env files.
+- **Postgres port 5433**: Another project occupies 5432. All DATABASE_URL references use 5433.
+- **Zod v4 import**: `import { z } from "zod/v4"` — the v4 subpath export. `z.record()` needs 2 args. Error flattening: `z.flattenError(parsed.error)`.
 - **Next.js 16 lint**: Uses `eslint .` directly, not `next lint` (which errors in 16.x).
-- **Turbopack root warning**: Set `turbopack.root: "."` in `next.config.ts` to suppress lockfile detection warning.
+- **execa removed**: Helm wrapper uses `child_process.execFile` (promisified). execa v9 is ESM-only and breaks tsx CJS mode.
+- **ioredis removed**: BullMQ bundles its own. Top-level ioredis caused version conflicts.
+- **Worker runs outside Next.js**: Must use bootstrap pattern (`index.ts` loads env via dotenv, then dynamic-imports `main.ts`). Static ES imports hoist above dotenv.config().
+- **Ollama provider cast**: `ollama-ai-provider` returns LanguageModelV1 but AI SDK v6 expects V3. Cast via `as any as LanguageModelV3`.
 
-## Patterns That Worked
+## Auth
 
-- shadcn/ui init with `--defaults` flag works cleanly with Tailwind v4 in Next.js 16
-- `npx create-next-app@latest --use-yarn` for yarn-based projects
-- Prisma 7 `postgresqlExtensions` preview feature works with `prisma-client` generator (not just `prisma-client-js`)
-- pgvector extension: `extensions = [pgvector(map: "vector", schema: "public")]` in datasource block
-- `Unsupported("vector(1536)")?` works in Prisma 7 — creates proper `vector(1536)` column in migration SQL
-- App lives at workspace root, not inside `mathison/` — run `yarn dev`, not `cd mathison && yarn dev`
-- Docker compose file is `docker-compose.local.yml` (not `docker-compose.yaml`)
+- **Split config pattern**: `auth.config.ts` (Edge-safe) for middleware + `auth.ts` (full, with Prisma) for server/API. Edge runtime can't import Prisma.
+- **Session shape**: `session.user.{id, tenantId, role, name, email}` — augmented via `src/types/next-auth.d.ts`.
+- **Auth guard**: `const session = await auth(); if (!session?.user) return 401;`
+- **Signup provisions K8s namespace**: Fire-and-forget. If K8s unavailable, signup still succeeds.
+- **Test user**: admin@mathison.dev / admin1234, workspace: mathison-dev
 
-## Package Notes
+## AI SDK v6
+
+- `tool()` uses `inputSchema` (not `parameters`)
+- `toUIMessageStreamResponse()` (not `toDataStreamResponse()`)
+- `stopWhen: stepCountIs(n)` (not `maxSteps`)
+- `useChat` returns `{ messages, sendMessage, status, error, stop }` — NOT `handleSubmit`/`isLoading`
+- Manual input state needed — `useChat` v6 doesn't manage it
+- `DefaultChatTransport` required: `transport: new DefaultChatTransport({ api: "/api/chat" })`
+- Server route: `convertToModelMessages(uiMessages)` before `streamText`
+- UIMessage `parts` array (not `content`/`toolInvocations`). Tool part states: `input-available`, `output-available`, `output-error`
+- `@ai-sdk/react` v3 is a separate package — not re-exported from `ai`
+
+## Kubernetes & Helm
+
+- `@kubernetes/client-node` v1.4.0: `_from` not `from` in NetworkPolicyIngressRule (JS reserved word)
+- KubeConfig: `loadFromDefault()` for kind/minikube/any. `loadFromCluster()` only as fallback.
+- K8s error `statusCode`: 409=already exists, 404=not found. Use for idempotent ops.
+- Helm values: write to temp file (os.tmpdir + randomUUID), pass via `--values`, cleanup in `finally`.
+- Bitnami chart versions: use NULL (latest) for seed recipes — pinned versions reference tags that get removed from Docker Hub.
+- Bitnami label: `app.kubernetes.io/instance=<releaseName>` for pod queries.
+- Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
+
+## BullMQ & Deployment Engine
+
+- Queue name: `"deployments"`. Job names from `JOB_NAMES` enum: DEPLOY, UNDEPLOY, UPGRADE, HEALTH_CHECK.
+- Connection: plain options `{ host, port, maxRetriesPerRequest: null }` — NOT IORedis instance.
+- Engine entry points: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` from `@/lib/deployer/engine`.
+- Values templates: Handlebars with `noEscape: true`. Context: `config`, `secrets`, `deps`, `tenant`, `platform`.
+- Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release>.<namespace>.svc.cluster.local`.
+
+## Frontend Patterns
+
+- **Font**: Inter (not Geist). CSS var `--font-sans`.
+- **Providers**: ThemeProvider > QueryClientProvider > TooltipProvider in `src/components/providers.tsx`.
+- **Dashboard layout**: `(dashboard)` route group = `/`, `/catalog`, `/deployments`, `/settings`.
+- **Theme hydration**: `useSyncExternalStore` for mounted detection (not useState + useEffect).
+- **Sheet accessibility**: Add `<SheetTitle className="sr-only">` + `aria-describedby={undefined}`.
+- **Chat events**: `chatEvents.openWithMessage(msg)` from `@/lib/events` — cross-component communication.
+- **React Flow v12**: Import from `@xyflow/react`. Explicit type params for `useNodesState<Node>([])`.
+- **Canvas polling**: TanStack Query `refetchInterval` returns `false` to disable when no transitional states.
+
+## Package Versions
 
 - next@16.1.6, react@19.2.3, react-dom@19.2.3
 - prisma@7.4.0, @prisma/client@7.4.0, @prisma/adapter-pg@7.4.0
-- zod@4.3.6 — `ollama-ai-provider` warns about peer dep wanting zod@^3 but it works fine
-- next-auth@5.0.0-beta.30 — JWT strategy, credentials provider, no adapter
-- bcryptjs@3.0.3 — includes own types, `@types/bcryptjs` is a stub (still installed)
-- ai@6.0.85 (Vercel AI SDK)
-
-## Auth Patterns (Step 03)
-
-- **Split config pattern**: `auth.config.ts` (Edge-safe, no DB imports) for middleware + `auth.ts` (full, with Prisma) for server components/API routes. This is required because middleware runs in Edge runtime.
-- **No adapter needed**: Using JWT strategy with credentials-only auth means no `@auth/prisma-adapter` required. Custom `authorize` function queries Prisma directly.
-- **Session shape**: `session.user.{id, tenantId, role, name, email}` — augmented via `src/types/next-auth.d.ts` (extends both `next-auth` and `next-auth/jwt` modules).
-- **Auth guard pattern**: `const session = await auth(); if (!session?.user) return 401;` — use in all protected API routes and server components.
-- **Signup flow**: POST `/api/auth/signup` → creates Tenant + User in transaction → redirect to `/login`. Does NOT auto-login.
-- **Login flow**: Client-side `signIn("credentials", { email, password, redirect: false })` from `next-auth/react` for error handling.
-- **Next.js 16 middleware deprecation**: Warning about "middleware" → "proxy" convention appears but middleware still works fine in 16.1.6. May need migration in future.
-
-## Catalog Patterns (Step 04)
-
-- **Seed script**: `prisma/seed.ts` uses relative imports (`../src/lib/...`) to avoid `@/` alias issues with `tsx`. Loads `.env.local` explicitly via `dotenv`.
-- **Public API routes**: Middleware allows all `/api/catalog/*` routes without auth. Write operations (POST, PUT, DELETE) check auth inside route handlers.
-- **Zod v4 gotcha**: `z.record()` requires 2 args: `z.record(z.string(), z.unknown())` — not just `z.record(z.unknown())`.
-- **Zod v4 error flattening**: Use `z.flattenError(parsed.error)` instead of `parsed.error.flatten()`.
-- **Prisma JSON casts**: To pass typed objects as Prisma JSON fields, cast through `unknown`: `data.configSchema as unknown as Prisma.InputJsonValue`.
-- **pgvector search**: Use `$queryRaw` with column aliases (`display_name AS "displayName"`) to match TypeScript interfaces. Cosine distance: `1 - (embedding <=> query::vector)`.
-- **Embedding generation**: Non-critical — if it fails, recipe is still created. Requires `OPENAI_API_KEY` in env.
-- **Seed recipes**: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio` — all PUBLISHED, OFFICIAL tier. Values templates use Handlebars syntax with `{{config.*}}`, `{{secrets.*}}`, `{{deps.*}}`, `{{tenant.*}}`, `{{cluster.*}}` placeholders.
-
-## AI Agent Patterns (Step 05)
-
-- **AI SDK v6 breaking changes**: `tool()` uses `inputSchema` (not `parameters`), `toDataStreamResponse()` → `toUIMessageStreamResponse()`, `maxSteps` → `stopWhen: stepCountIs(n)`.
-- **Zod v4 works with AI SDK v6**: The `FlexibleSchema` type accepts `z4.core.$ZodType` — Zod v4 schemas from `zod/v4` work directly with `tool()`.
-- **Ollama LanguageModelV1 cast**: `ollama-ai-provider` returns `LanguageModelV1` but AI SDK v6 expects `LanguageModelV3`. Cast via `as any as LanguageModelV3` in provider factory.
-- **Tool tenant scoping**: `getTools(tenantId)` closure-captures `tenantId` — all DB queries inside tools are automatically scoped.
-- **searchCatalog fallback**: If pgvector semantic search fails (e.g., no embeddings), falls back to text search (`contains` + `has`).
-- **deployService dependency resolution**: Auto-deploys dependencies before the main service, records `dependsOn` IDs.
-- **K8s/Helm stubs**: `getK8sPodStatus()`, `getK8sPodLogs()`, `enqueueDeployJob()` are placeholder functions — replace in Steps 06-07.
-- **Chat messages format**: AI SDK v6 uses `ModelMessage[]` type. Frontend `useChat` sends messages in this format automatically.
-- **streamText response**: Use `result.toUIMessageStreamResponse()` — this returns the UI message stream protocol that `useChat` on the frontend expects.
-
-## Kubernetes & Helm Patterns (Step 06)
-
-- **`@kubernetes/client-node` v1.4.0**: Uses `_from` (not `from`) in `V1NetworkPolicyIngressRule` — `from` is a JS reserved word that the K8s client maps to `_from`.
-- **KubeConfig loading**: `loadFromDefault()` works for kind, minikube, and any configured kubeconfig. Only use `loadFromCluster()` as fallback for in-cluster service accounts.
-- **K8s API error handling**: Errors have `statusCode` (409=conflict/exists, 404=not found). Check with `err.statusCode` for idempotent operations.
-- **Helm CLI output**: `helm install/upgrade --output json` includes `chart.metadata` (name, version, appVersion). `helm status --output json` does NOT include `chart` key — only `name`, `info`, `config`, `manifest`, `version`, `namespace`.
-- **Helm values**: Write to temp file in `os.tmpdir()` with `crypto.randomUUID()` name, pass via `--values <path>`, cleanup in `finally` block. Uses `yaml` package for serialization.
-- **Helm repo**: `helm repo add` errors with "already exists" if repo already added — catch and continue. Always `helm repo update` after adding.
-- **`execa` replaced with `child_process`**: execa v9 was ESM-only and broke tsx CJS mode. Helm wrapper now uses `child_process.execFile` (promisified) — works everywhere.
-- **Tenant provisioning**: Signup route calls `provisionTenant()` fire-and-forget. If K8s is unavailable, signup still succeeds.
-- **kind cluster**: `kind create cluster --name mathison-dev` — sets context automatically. K8s v1.35.0. No KUBECONFIG env var needed.
-- **Helm label convention**: Bitnami charts use `app.kubernetes.io/instance=<releaseName>` for pod labeling. Use this to query pods for a specific release.
-
-## Package Notes (updated)
-
-- `@kubernetes/client-node@1.4.0` — K8s API client
-- `yaml@2.8.2` — YAML serialization for Helm values
-- `bullmq@5.69.1` — Job queue (includes its own bundled ioredis)
-- `handlebars@4.7.8` — Values template rendering
-- `execa` **removed** — replaced with `child_process.execFile` (ESM-only breaks tsx)
-- `ioredis` **removed** — BullMQ bundles its own; top-level caused version conflict
-
-## Deployment Engine Patterns (Step 07)
-
-- **BullMQ connection**: Use plain options object `{ host, port, maxRetriesPerRequest: null }` for connection — NOT an IORedis instance. This avoids ioredis version conflicts between top-level and bullmq's bundled copy.
-- **Queue name**: `"deployments"` — used by both `deploymentQueue` (producer) and worker (consumer).
-- **Job names**: `JOB_NAMES.DEPLOY`, `.UNDEPLOY`, `.UPGRADE`, `.HEALTH_CHECK` from `@/lib/queue/jobs`.
-- **Engine pattern**: Agent tools call `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` from `@/lib/deployer/engine` — these handle recipe lookup, dependency resolution, secret generation, template rendering, DB record creation, and job queuing.
-- **Values template rendering**: Handlebars with `noEscape: true` (YAML safety). Context: `config`, `secrets`, `deps`, `tenant`, `platform`. Config defaults merged from recipe's configSchema.
-- **Dependency auto-deploy**: `resolveDependencies()` checks existing deployments, auto-deploys missing ones with priority 1 jobs. Connection info built from K8s service DNS: `<release>.<namespace>.svc.cluster.local`.
-- **Worker startup**: `tsx watch worker/index.ts` with `dotenv` loading `.env.local`. Worker must be running as a separate process for deploys to execute.
-- **execa removed**: Replaced with `child_process.execFile` (promisified) in Helm wrapper. execa v9 is ESM-only and breaks tsx CJS mode. Native child_process works everywhere.
-- **ioredis removed**: Top-level ioredis dependency removed. BullMQ uses its own bundled copy internally.
-
-## Frontend Shell Patterns (Step 08)
-
-- **Font change**: Switched from Geist to Inter. CSS variable `--font-sans` mapped in `globals.css` `@theme inline` block.
-- **Providers hierarchy**: ThemeProvider (next-themes) > QueryClientProvider (TanStack) > TooltipProvider (Radix). All in `src/components/providers.tsx` as a "use client" component.
-- **Dashboard layout**: Server component `(dashboard)/layout.tsx` fetches session + tenant name, passes as props to `DashboardShell` (client). DashboardShell manages sidebar collapse and mobile menu state.
-- **Sidebar collapse**: State lives in `DashboardShell`. Desktop sidebar is `hidden lg:flex`. Mobile uses Sheet from left side.
-- **Theme hydration**: `next-themes` causes SSR/client mismatch for theme label text. Fixed with `useSyncExternalStore(() => () => {}, () => true, () => false)` instead of `useState` + `useEffect` (linter rejects `setState` in effect).
-- **Sheet accessibility**: SheetContent without a SheetTitle triggers Radix accessibility warning. Add `<SheetTitle className="sr-only">` and `aria-describedby={undefined}` to suppress.
-- **Chat panel**: Standalone component with own Sheet state. FAB hidden when sheet is open. Placeholder input disabled for Step 09.
-- **Route group**: `(dashboard)` is the main protected route group — maps to `/`, `/catalog`, `/deployments`, `/settings`. No root `page.tsx` needed since middleware handles auth redirect and the route group's `page.tsx` matches `/`.
-- **Active nav detection**: `pathname === "/"` for dashboard, `pathname.startsWith("/catalog")` etc for others. Prevents false positives.
-
-## User-facing Language (Cloud-first rebrand)
-
-- **NEVER expose K8s terminology in the UI**: No "Kubernetes", "K8s", "Helm", "pods", "namespaces", "clusters", "nodes", "YAML" in any user-facing text.
-- **Translation table**: pod → instance/service, namespace → workspace, Helm chart → service template, container → service/app, node → omit.
-- **System prompt**: Instructs the AI agent to use plain service language and never volunteer infrastructure details.
-- **Tool descriptions**: Neutralized — no Helm/K8s references in descriptions that the LLM reads.
-- **Worker error messages**: Rewritten in user terms ("service not yet healthy" not "pods not ready").
-- **Internal code**: Variable names, logging, developer-facing code still use K8s/Helm terminology — only user-facing strings changed.
-- **Decision D42 in PROGRESS.md** tracks this.
-
-## Chat UI Patterns (Step 09)
-
-- **AI SDK v6 `useChat` API**: Returns `{ messages, sendMessage, status, error, stop }` — NOT `handleSubmit`/`handleInputChange`/`input`/`isLoading`.
-- **Manual input state**: `useChat` v6 does NOT manage input state. Use `useState` for the input field, call `sendMessage({ text })` on submit.
-- **`DefaultChatTransport`**: `useChat` needs explicit `transport: new DefaultChatTransport({ api: "/api/chat" })` — import from `ai`.
-- **UIMessage parts**: Messages have `parts` array, not `content`/`toolInvocations`. Parts: `TextUIPart` (`type: 'text'`, `text`, `state`), tool parts (`type: 'tool-{name}'`, `toolCallId`, `state`, `input`, `output`), `ReasoningUIPart`, `StepStartUIPart`.
-- **Tool part states**: `input-streaming`, `input-available`, `output-available`, `output-error` — NOT `call`/`result`.
-- **Chat status**: `'ready' | 'submitted' | 'streaming' | 'error'` — use instead of `isLoading`.
-- **`convertToModelMessages`**: Server route must convert UIMessage[] → ModelMessage[] before passing to `streamText`. Import from `ai`.
-- **`@ai-sdk/react` v3**: Separate package — must `yarn add @ai-sdk/react` (not re-exported from `ai`).
-- **ChatProvider placement**: Self-contained inside `ChatPanel` component (wraps `ChatPanelInner`). No need to add to global providers.
-- **Markdown in chat**: `react-markdown` v10 renders assistant text. Prose classes from Tailwind typography for styling.
-- **Auto-scroll**: `useEffect` with `bottomRef.current?.scrollIntoView({ behavior: "smooth" })` triggered by messages/status changes.
-
-## Package Notes (updated)
-
-- `@ai-sdk/react@3.0.88` — React hooks for AI SDK v6 (useChat, etc.)
-- `react-markdown@10.1.0` — Markdown rendering in chat messages
-
-## Canvas Patterns (Step 10)
-
-- **React Flow v12**: Import from `@xyflow/react` (NOT `reactflow`). CSS: `import "@xyflow/react/dist/style.css"`.
-- **`useNodesState`/`useEdgesState` typing**: Must provide explicit type parameters — `useNodesState<Node>([])` — otherwise the setter type is `Dispatch<SetStateAction<never[]>>` which doesn't accept `Node[]`.
-- **dagre auto-layout**: `dagre.graphlib.Graph()` + `setGraph({ rankdir: "TB" })`. Returns node positions centered — subtract half width/height to get top-left position for React Flow.
-- **Custom node pattern**: Export as `memo()` wrapper. `NodeProps` has `data` typed as `Record<string, unknown>` — cast to your custom interface inside the component.
-- **React Flow dark mode**: Use `colorMode` prop with `resolvedTheme` from `next-themes`. Accepts `"dark" | "light" | "system"`.
-- **Handle styling**: Use `!` prefix for Tailwind classes on Handle elements to override React Flow defaults (e.g., `!bg-muted-foreground !w-2 !h-2 !border-0`).
-- **Smart polling**: TanStack Query `refetchInterval` can return `false` to disable. Check transitional states (PENDING, DEPLOYING, DELETING) to enable 5s polling.
-- **Stack API**: Returns `{ nodes, edges }` — nodes have `type: "service"`, edges have `type: "dependency"`.
-
-## Package Notes (updated)
-
-- `@xyflow/react@12.10.0` — React Flow v12
-- `dagre@0.8.5` — Directed graph auto-layout
-- `@types/dagre@0.7.53` — TypeScript types for dagre
-
-## Catalog & Deployments UI Patterns (Step 11)
-
-- **Chat event emitter**: `chatEvents.openWithMessage(msg)` from `@/lib/events` — fires an event that ChatPanelInner listens to. Opens the sheet and sends the message after 100ms delay.
-- **Recipe detail Deploy button**: Uses AI-first approach — opens chat with "Deploy {name}" rather than a separate deploy form. This leverages the existing AI agent for deployment orchestration.
-- **Deployment API routes**: All tenant-scoped via `session.user.tenantId`. DELETE route uses `initiateRemoval` from engine which checks for dependents.
-- **Logs API**: Returns early with friendly message for PENDING deployments. Catches K8s errors gracefully — never returns 500, always returns `{ logs: string }`.
-- **Log viewer**: 10s polling via TanStack Query `refetchInterval`, auto-scroll with ref, line count selector (50/100/500).
-- **AlertDialog for Remove**: Requires confirmation. Shows dependent services error from engine. Invalidates both `["deployments"]` and `["stack"]` queries on success, then redirects to `/deployments`.
-- **Category filter chips**: Hardcoded list matching seed recipe categories. `"all"` filter maps to no category param.
-- **Debounced search**: 300ms debounce on search input using `setTimeout` in `useEffect`.
-- **Tier badge pattern**: `defaultTier` const extracted outside the record to avoid TS indexing issues with `Record<string, T>` fallback.
-
-## E2E Testing Session (2026-02-13)
-
-- **Worker bootstrap fix**: Static ES imports hoist above `dotenv.config()`, so `db.ts` creates pg.Pool before env vars are set. Fixed by splitting worker into `index.ts` (loads env, dynamically imports main) and `main.ts` (all the actual worker logic). Critical pattern for any code that runs outside Next.js.
-- **Card navigation fix**: DeploymentCard had nested `<a>` tags (Link + external URL anchor = invalid HTML). Fixed by replacing inner `<a>` with `<span>` + `onClick` that opens `window.open()`. RecipeCard's Link needed `className="block"` for full clickable area.
-- **Bitnami image tags**: Chart versions get outdated fast — Bitnami removes old Docker image tags. Set `chartVersion = NULL` for seed recipes to always use latest. For kind testing, pre-load images with `kind load docker-image`.
-- **Redis/PostgreSQL values templates**: Removed `image.tag: "{{config.version}}"` from both — let the chart use its own default tag. Bare major version tags (`7`, `16`) don't exist on Docker Hub for Bitnami images.
-- **Kind image loading**: `kind load docker-image bitnami/redis:latest --name mathison-dev` — essential for testing because kind clusters have limited Docker Hub access.
+- zod@4.3.6, ai@6.0.85, @ai-sdk/react@3.0.88
+- next-auth@5.0.0-beta.30 (JWT, credentials only)
+- @kubernetes/client-node@1.4.0, bullmq@5.69.1
+- @xyflow/react@12.10.0, dagre@0.8.5
+- react-markdown@10.1.0, handlebars@4.7.8, bcryptjs@3.0.3
 
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required
-- `ollama-ai-provider` — check for a v2 release supporting LanguageModelV3
-- PostgreSQL and MinIO chart versions also need NULL/latest treatment (currently untested)
-- Update all seed recipe chart versions to use latest (NULL) and fix remaining values templates if needed
+- `ollama-ai-provider` — check for v2 release supporting LanguageModelV3
+- Turbopack root warning about multiple lockfiles — mitigated with `turbopack.root: "."` in next.config.ts

@@ -1,0 +1,73 @@
+---
+description: Current project state, environment versions, known issues, architectural decisions log, and feature history. Use at session start or when checking what's been built, what's broken, or what decisions were made.
+globs: 
+alwaysApply: false
+---
+
+# Mathison — Project State
+
+> Read this at the start of every session.
+
+## Current State
+
+- **Phase**: Post-MVP — all 11 build steps complete, E2E tested
+- **App directory**: workspace root (not inside `mathison/`)
+- **Dev server**: `yarn dev` on port 3000
+- **Worker**: `yarn worker` in separate terminal (needed for deployments)
+- **Docker services**: postgres on 5433, redis on 6379 (`docker compose -f docker-compose.local.yml up -d`)
+- **K8s cluster**: kind `mathison-dev` (K8s v1.35.0)
+- **Database**: migrated + seeded — 5 published recipes, pgvector active (v0.8.1)
+- **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
+
+## Environment
+
+| Tool | Version / Path | Notes |
+|------|---------------|-------|
+| Node.js | v22.22.0 | yarn 1.22.22 |
+| Next.js | 16.1.6 | App Router, Turbopack dev |
+| Prisma | 7.4.0 | adapter-pg pattern |
+| PostgreSQL | 16 (Docker) | port **5433** |
+| Redis | 7 (Docker) | port 6379 |
+| Helm | v4.1.1 | `/opt/homebrew/bin/helm`, bitnami repo |
+| kubectl | system | `/usr/local/bin/kubectl` |
+| kind | system | `/opt/homebrew/bin/kind` |
+| LLM | Anthropic | API key in .env.local |
+
+## Known Issues
+
+- Turbopack root warning about multiple lockfiles — mitigated with `turbopack.root: "."` in next.config.ts
+- Port 5432 occupied by `aucm` project — using 5433
+- Next.js 16 deprecation: "middleware" convention deprecated in favor of "proxy" — middleware still works
+
+## Decisions Log
+
+Architectural decisions that affect all future work. Reference by ID when relevant.
+
+| # | Decision | Rationale |
+|---|----------|-----------|
+| D1 | LLM provider: Anthropic (Claude) | User preference |
+| D2 | K8s testing: local `kind` cluster | Disposable, automatable, no shared infra risk |
+| D5 | Package manager: yarn | User preference |
+| D6 | Prisma 7 with adapter pattern | Latest Prisma; `prisma-client` generator, `@prisma/adapter-pg` |
+| D7 | Prisma client output: `src/generated/prisma` | Import from `@/generated/prisma/client` |
+| D8 | Postgres port: 5433 | Avoid conflict with existing postgres on 5432 |
+| D9 | App at workspace root (not `mathison/`) | Clean layout, single package.json |
+| D10 | pgvector 0.8.1, 1536-dim embeddings | Matches text-embedding-3-small output |
+| D12 | Split auth config (Edge + full) | Middleware runs in Edge, can't import Prisma |
+| D13 | JWT only, no Prisma adapter | Custom user fields, credentials-only auth |
+| D14 | bcryptjs (pure JS), 12 salt rounds | No native addon issues |
+| D15 | Catalog API routes are public | Write ops check auth in handler |
+| D18 | AI SDK v6 API (`inputSchema`, `toUIMessageStreamResponse`, etc.) | Breaking changes from v5 |
+| D30 | child_process.execFile for Helm (not execa) | execa v9 ESM-only breaks tsx worker |
+| D42 | Cloud-first rebrand: hide K8s terminology from UI | Users see "services" not "Helm charts" |
+| D43 | AI SDK v6 UIMessage format | `convertToModelMessages` on server, parts-based rendering on client |
+| D56 | Worker bootstrap pattern (index.ts → dynamic import main.ts) | Static imports hoist above dotenv.config() |
+| D57 | Bitnami chart versions = NULL (use latest) | Pinned versions reference removed Docker Hub tags |
+
+## Feature Log
+
+Track new features built after MVP. Add entries as you go.
+
+| Date | Feature | Files Changed | Notes |
+|------|---------|---------------|-------|
+| — | *(none yet)* | — | — |

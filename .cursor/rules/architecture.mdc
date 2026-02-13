@@ -1,0 +1,146 @@
+---
+description: Codebase structure, module responsibilities, directory layout, API routes, database models, and data flow. Use when working on features, navigating the codebase, or needing to understand how modules connect.
+globs: 
+alwaysApply: false
+---
+
+# Mathison — Codebase Architecture
+
+> Concise map of the codebase as built. Read this to orient yourself in any session.
+
+## High-Level Data Flow
+
+```
+User (browser)
+  ↓ chat message
+Chat Panel (useChat + AI SDK v6)
+  ↓ POST /api/chat
+AI Agent (streamText + tools)
+  ↓ tool calls (deployService, searchCatalog, etc.)
+Deployment Engine (src/lib/deployer/engine.ts)
+  ↓ BullMQ job
+Worker (worker/main.ts)
+  ↓ Helm install/upgrade/uninstall
+Kind Cluster (Kubernetes)
+```
+
+## Directory Structure
+
+```
+ai-k8s/                          # Workspace root = Next.js app
+├── src/
+│   ├── app/                     # Next.js App Router
+│   │   ├── (auth)/              # Login + signup pages
+│   │   ├── (dashboard)/         # Protected pages (/, /catalog, /deployments, /settings)
+│   │   └── api/                 # API routes
+│   │       ├── auth/            # NextAuth + signup
+│   │       ├── catalog/         # Public: recipes list, detail, search
+│   │       ├── chat/            # AI agent streaming endpoint
+│   │       ├── deployments/     # CRUD + logs (tenant-scoped)
+│   │       └── stack/           # Canvas data (nodes + edges)
+│   │
+│   ├── components/
+│   │   ├── canvas/              # React Flow: stack-canvas, service-node, dependency-edge
+│   │   ├── catalog/             # Recipe cards, grid, filters, detail
+│   │   ├── chat/                # Chat provider, messages, input, tool cards
+│   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer
+│   │   ├── layout/              # Dashboard shell, sidebar, header, chat panel
+│   │   ├── ui/                  # shadcn/ui primitives (button, card, sheet, etc.)
+│   │   └── providers.tsx        # Client providers (theme, query, tooltip)
+│   │
+│   ├── lib/
+│   │   ├── agent/               # AI: provider factory, system prompt, 10 tools
+│   │   ├── catalog/             # Recipes: CRUD service, embeddings, seed data
+│   │   ├── cluster/             # K8s client, Helm CLI wrapper, ingress
+│   │   ├── deployer/            # Engine, dependency resolution, secrets, templates
+│   │   ├── queue/               # BullMQ connection, queue definitions, job types
+│   │   ├── tenant/              # Namespace provisioning, quota management
+│   │   ├── auth.ts              # Auth.js full config (Prisma, server-side)
+│   │   ├── auth.config.ts       # Auth.js Edge config (middleware-safe)
+│   │   ├── config.ts            # Zod-validated env vars
+│   │   ├── db.ts                # Prisma singleton (adapter-pg)
+│   │   ├── events.ts            # Cross-component event emitter (chat ↔ UI)
+│   │   └── utils.ts             # cn() and shared utilities
+│   │
+│   ├── hooks/                   # React hooks: useCanvasData, useCatalog, useDeployments
+│   ├── types/                   # Shared TypeScript types
+│   ├── generated/prisma/        # Generated Prisma client (don't edit)
+│   └── middleware.ts            # Auth middleware (Edge runtime)
+│
+├── worker/
+│   ├── index.ts                 # Bootstrap: loads .env.local, dynamic imports main.ts
+│   └── main.ts                  # BullMQ worker: processes deploy/undeploy/upgrade jobs
+│
+├── prisma/
+│   ├── schema.prisma            # Database schema (all models, pgvector)
+│   ├── seed.ts                  # Seeds 5 recipes (postgresql, redis, n8n, uptime-kuma, minio)
+│   └── migrations/              # SQL migrations
+│
+├── public/icons/                # Service icons (postgresql.svg, redis.svg, etc.)
+├── docker-compose.local.yml     # Postgres 16 + Redis 7
+├── package.json                 # yarn, scripts: dev, build, worker, typecheck, lint
+└── .env.local                   # Environment variables (not committed)
+```
+
+## Key Modules
+
+### AI Agent (`src/lib/agent/`)
+- **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
+- **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology.
+- **tools.ts** — 10 tools: `searchCatalog`, `deployService`, `getDeploymentStatus`, `listDeployments`, `removeDeployment`, `getServiceLogs`, `upgradeService`, `getClusterHealth`, `listAvailableServices`, `getDeploymentDetails`. All tenant-scoped via closure.
+
+### Deployment Engine (`src/lib/deployer/`)
+- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Handles recipe lookup, config validation, secret generation, template rendering, DB writes, and BullMQ job queuing.
+- **dependencies.ts** — `resolveDependencies()`. Auto-deploys missing dependencies with priority jobs.
+- **secrets.ts** — `generateSecrets()`. Uses `crypto.randomBytes()` for strong secrets.
+- **template.ts** — Handlebars rendering. Merges config defaults from recipe's configSchema.
+
+### Cluster Integration (`src/lib/cluster/`)
+- **kubernetes.ts** — KubeConfig, namespace CRUD, pod status/logs, resource queries.
+- **helm.ts** — Helm CLI wrapper via `child_process.execFile`. Install, upgrade, uninstall, status.
+- **ingress.ts** — Ingress rule management.
+
+### Background Worker (`worker/`)
+- Runs as separate process: `yarn worker` (= `tsx watch worker/index.ts`).
+- Processes BullMQ jobs from the `"deployments"` queue.
+- Job types: deploy, undeploy, upgrade, health_check.
+- Bootstrap pattern: `index.ts` loads dotenv first, then dynamic-imports `main.ts`.
+
+### Frontend Data Flow
+- **TanStack Query** for all client data fetching. Query keys: `["catalog"]`, `["deployments"]`, `["stack"]`.
+- **`useChat`** (AI SDK v6 `@ai-sdk/react`) for chat. Sends UIMessage[], server converts to ModelMessage[].
+- **Chat invalidation**: ChatProvider invalidates `["deployments"]` + `["stack"]` when chat finishes.
+- **Canvas polling**: 5s interval when transitional deployment states exist.
+
+### Auth Flow
+- **Middleware** (`middleware.ts`): Edge-safe, uses `auth.config.ts`. Protects all routes except `/login`, `/signup`, `/api/catalog/*`, `/api/auth/*`.
+- **Server-side** (`auth.ts`): Full config with Prisma. Used in API routes and server components via `auth()`.
+- **JWT sessions**: No database sessions. Token contains `{id, tenantId, role, name, email}`.
+
+## Database Models (Prisma)
+
+| Model | Purpose |
+|-------|---------|
+| Tenant | Multi-tenancy root. Has slug (= K8s namespace suffix) |
+| User | Auth. Belongs to Tenant. Has role (ADMIN/MEMBER) |
+| Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate |
+| RecipeVersion | Version history for recipes |
+| Deployment | Running service instance. Belongs to Tenant + Recipe. Has status, config, helmRelease |
+| Stack | Groups of deployments (future use) |
+| Conversation | Chat thread. Belongs to User + Tenant |
+| Message | Chat message. Belongs to Conversation. Has role + content |
+
+## API Routes
+
+| Route | Methods | Auth | Purpose |
+|-------|---------|------|---------|
+| `/api/auth/[...nextauth]` | GET, POST | Public | Auth.js handlers |
+| `/api/auth/signup` | POST | Public | Create tenant + user |
+| `/api/catalog` | GET | Public | List recipes (with filters) |
+| `/api/catalog/[slug]` | GET | Public | Recipe detail |
+| `/api/catalog/search` | POST | Public | Semantic search (pgvector) |
+| `/api/chat` | POST | Protected | AI agent streaming |
+| `/api/deployments` | GET | Protected | List user's deployments |
+| `/api/deployments/[id]` | GET, DELETE | Protected | Deployment detail / remove |
+| `/api/deployments/[id]/logs` | GET | Protected | Pod logs |
+| `/api/stack` | GET | Protected | Canvas nodes + edges |
