@@ -4,14 +4,14 @@
 
 ## Current State
 
-- **Current step**: 07 — Deployment Engine & BullMQ Worker (not started)
+- **Current step**: 08 — Frontend Shell & Layout (not started)
 - **App directory**: workspace root (not inside `mathison/`)
 - **Dev server**: running on port 3000
 - **Docker services**: running (postgres on 5433, redis on 6379)
 - **K8s cluster**: kind `mathison-dev` running (K8s v1.35.0)
 - **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 test deployment (postgresql PENDING)
 - **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
-- **Last session**: Step 06 completed — K8s client wrapper, Helm CLI wrapper, ingress helper, tenant manager, quota helpers. Agent tool stubs wired to real implementations. Signup wired to provision K8s namespace.
+- **Last session**: Step 07 completed — BullMQ deployment engine, worker process, secret generation, values template rendering, dependency resolution. Agent tools wired to real engine. Replaced execa with child_process in Helm wrapper. Removed execa and ioredis top-level deps.
 
 ## Step Completion
 
@@ -23,7 +23,7 @@
 | 04   | Service Catalog Backend           | **Complete** | 5 recipes seeded, CRUD API, semantic search (needs OPENAI_API_KEY), public catalog routes       |
 | 05   | AI Agent Core                     | **Complete** | LLM provider factory, system prompt, 10 tools, streaming chat, multi-step tool calling verified |
 | 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace. |
-| 07   | Deployment Engine & BullMQ Worker | Not started  |                                                                                                 |
+| 07   | Deployment Engine & BullMQ Worker | **Complete** | BullMQ queues, deployer engine, worker, secrets, templates, deps. execa→child_process migration |
 | 08   | Frontend Shell & Layout           | Not started  |                                                                                                 |
 | 09   | Chat Panel UI                     | Not started  |                                                                                                 |
 | 10   | Canvas (React Flow)               | Not started  |                                                                                                 |
@@ -83,6 +83,12 @@ Record every architectural decision here. Future sessions depend on this.
 | D27 | Signup now provisions K8s namespace (non-blocking, fire-and-forget)        | Step 06  | Steps 07-11                | Namespace + quota + network policy created on signup                                            |
 | D28 | `generateSecret()` upgraded to `crypto.randomBytes()` for strong secrets  | Step 06  | Deployment secrets          | Replaces Math.random-based generator from Step 05                                               |
 | D29 | `enqueueDeployJob()` stub remains — wired in Step 07 with BullMQ          | Step 06  | Step 07                    | Only K8s read ops wired in Step 06, deploy queue deferred                                       |
+| D30 | Replaced `execa` with `child_process.execFile` in Helm wrapper            | Step 07  | All cluster ops            | execa v9 ESM-only breaks tsx worker; child_process is native and works everywhere               |
+| D31 | Removed top-level `ioredis` dep — BullMQ connection uses plain options    | Step 07  | Queue/worker               | Avoids ioredis version conflict between top-level and bullmq's bundled copy                    |
+| D32 | BullMQ queue name: `"deployments"` — job names: deploy, undeploy, upgrade | Step 07  | Steps 05, 09               | Agent tools enqueue via `deploymentQueue.add()`                                                 |
+| D33 | Worker runs via `tsx watch worker/index.ts` — loads .env.local via dotenv | Step 07  | Development                | Separate process, not inside Next.js — needs explicit dotenv loading                            |
+| D34 | Deployer engine: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` | Step 07 | Step 05 tools        | Agent tools call engine functions instead of inline logic                                        |
+| D35 | Values templates rendered with Handlebars (noEscape for YAML safety)      | Step 07  | Step 04 templates          | Config defaults merged with user config before rendering                                         |
 
 ## Cross-Step Dependencies
 
@@ -109,4 +115,7 @@ Decisions in early steps that later steps MUST respect. Check this before starti
 | 07          | Job data shapes (`DeployJobData`, etc.)                                 | 05             | Must match what tools send            |
 | 08          | ChatProvider location in component tree                                 | 09             | Chat components use context from this |
 | 08          | Sheet component for chat panel                                          | 09             | Chat content goes inside this shell   |
+| 07          | BullMQ queue name: `"deployments"`, job names from `JOB_NAMES`          | 05, 09         | Agent tools + UI reference these      |
+| 07          | Engine functions: `initiateDeployment`, `initiateUpgrade`, `initiateRemoval` | 05          | Tools import from `@/lib/deployer/engine` |
+| 07          | Worker process: `yarn worker` / `tsx watch worker/index.ts`             | Development    | Must be running for deploys to execute |
 | 10          | `useCanvasData` hook query key: `["stack"]`                             | 09             | Chat invalidates this after deploys   |

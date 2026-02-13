@@ -1,37 +1,18 @@
 import { tool } from "ai";
 import { z } from "zod/v4";
-import { Prisma } from "@/generated/prisma/client";
 
 import { prisma } from "@/lib/db";
 import { searchRecipes, getRecipe, createRecipe } from "@/lib/catalog/service";
 import { getReleasePodStatus, getReleaseLogs } from "@/lib/cluster/kubernetes";
-import * as crypto from "node:crypto";
+import {
+  initiateDeployment,
+  initiateUpgrade,
+  initiateRemoval,
+} from "@/lib/deployer/engine";
 
 import type { ConfigSchema, AiHints, RecipeCreateInput } from "@/types/recipe";
 
 // ─── Helpers ─────────────────────────────────────────────
-
-/** Generate a cryptographically strong random secret string */
-function generateSecret(length = 24): string {
-  const chars =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const bytes = crypto.randomBytes(length);
-  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
-}
-
-/** Placeholder: enqueue a BullMQ deployment job (wired in Step 07) */
-async function enqueueDeployJob(data: {
-  deploymentId: string;
-  action: "install" | "upgrade" | "uninstall";
-  helmRelease: string;
-  namespace: string;
-  chartUrl: string;
-  chartVersion?: string;
-  values?: Record<string, unknown>;
-}): Promise<void> {
-  // TODO (Step 07): Replace with actual BullMQ queue.add()
-  console.log("[enqueueDeployJob] Stub — job data:", JSON.stringify(data));
-}
 
 /** Get live K8s pod status for a Helm release */
 async function getK8sPodStatus(
@@ -174,140 +155,25 @@ export function getTools(tenantId: string) {
           )
       }),
       execute: async ({ recipeSlug, name, config }) => {
-        // 1. Look up recipe
-        const recipe = await getRecipe(recipeSlug);
-        if (!recipe) {
-          return { error: `Recipe '${recipeSlug}' not found in catalog` };
-        }
-
-        // 2. Get tenant namespace
-        const tenant = await prisma.tenant.findUnique({
-          where: { id: tenantId },
-          select: { namespace: true, slug: true }
-        });
-        if (!tenant) {
-          return { error: "Tenant not found" };
-        }
-
-        const deploymentName = name || `${recipe.slug}`;
-        const helmRelease = `${tenant.slug}-${deploymentName}`;
-
-        // 3. Check if already deployed with this name
-        const existing = await prisma.deployment.findUnique({
-          where: {
-            tenantId_name: { tenantId, name: deploymentName }
-          }
-        });
-        if (existing) {
-          return {
-            error: `A service named '${deploymentName}' is already deployed (status: ${existing.status})`,
-            deploymentId: existing.id
-          };
-        }
-
-        // 4. Resolve dependencies — deploy them first if needed
-        const dependsOnIds: string[] = [];
-        if (recipe.dependencies && recipe.dependencies.length > 0) {
-          for (const dep of recipe.dependencies) {
-            const depName = dep.alias || dep.service;
-            const existingDep = await prisma.deployment.findUnique({
-              where: {
-                tenantId_name: { tenantId, name: depName }
-              }
-            });
-
-            if (existingDep) {
-              dependsOnIds.push(existingDep.id);
-            } else {
-              // Auto-deploy the dependency
-              const depRecipe = await getRecipe(dep.service);
-              if (!depRecipe) {
-                return {
-                  error: `Dependency '${dep.service}' not found in catalog`
-                };
-              }
-
-              const depHelmRelease = `${tenant.slug}-${depName}`;
-              const depDeployment = await prisma.deployment.create({
-                data: {
-                  tenantId,
-                  recipeId: depRecipe.id,
-                  recipeVersion: depRecipe.version,
-                  name: depName,
-                  namespace: tenant.namespace,
-                  helmRelease: depHelmRelease,
-                  config: (dep.config ??
-                    {}) as unknown as Prisma.InputJsonValue,
-                  secretsRef: `secret-${tenant.slug}-${depName}`,
-                  status: "PENDING"
-                }
-              });
-
-              await enqueueDeployJob({
-                deploymentId: depDeployment.id,
-                action: "install",
-                helmRelease: depHelmRelease,
-                namespace: tenant.namespace,
-                chartUrl: depRecipe.chartUrl,
-                chartVersion: depRecipe.chartVersion ?? undefined
-              });
-
-              dependsOnIds.push(depDeployment.id);
-            }
-          }
-        }
-
-        // 5. Generate secrets if recipe defines them
-        const secrets: Record<string, string> = {};
-        if (recipe.secretsSchema) {
-          for (const [key, field] of Object.entries(recipe.secretsSchema)) {
-            if (field.generate) {
-              secrets[key] = generateSecret(field.length || 24);
-            }
-          }
-        }
-
-        // 6. Create deployment record
-        const deployment = await prisma.deployment.create({
-          data: {
+        try {
+          const result = await initiateDeployment({
             tenantId,
-            recipeId: recipe.id,
-            recipeVersion: recipe.version,
-            name: deploymentName,
-            namespace: tenant.namespace,
-            helmRelease,
-            config: (config ?? {}) as unknown as Prisma.InputJsonValue,
-            secretsRef:
-              Object.keys(secrets).length > 0
-                ? `secret-${tenant.slug}-${deploymentName}`
-                : null,
-            status: "PENDING",
-            dependsOn: dependsOnIds
-          }
-        });
+            recipeSlug,
+            name,
+            config,
+          });
 
-        // 7. Queue Helm install job
-        await enqueueDeployJob({
-          deploymentId: deployment.id,
-          action: "install",
-          helmRelease,
-          namespace: tenant.namespace,
-          chartUrl: recipe.chartUrl,
-          chartVersion: recipe.chartVersion ?? undefined,
-          values: config ?? undefined
-        });
-
-        const depNames =
-          dependsOnIds.length > 0
-            ? ` (with ${dependsOnIds.length} dependency/ies auto-deployed)`
-            : "";
-
-        return {
-          deploymentId: deployment.id,
-          name: deploymentName,
-          status: "PENDING",
-          message: `Deployment '${deploymentName}' (${recipe.displayName}) queued for installation${depNames}.`
-        };
+          return {
+            deploymentId: result.deploymentId,
+            name: result.name,
+            status: result.status,
+            message: result.message,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[deployService]", { recipeSlug, tenantId }, err);
+          return { error: message };
+        }
       }
     }),
 
@@ -477,55 +343,23 @@ export function getTools(tenantId: string) {
           .describe("New configuration values")
       }),
       execute: async ({ deploymentId, config }) => {
-        const deployment = await prisma.deployment.findFirst({
-          where: { id: deploymentId, tenantId },
-          include: {
-            recipe: {
-              select: {
-                chartUrl: true,
-                chartVersion: true,
-                displayName: true
-              }
-            }
-          }
-        });
+        try {
+          const result = await initiateUpgrade({
+            tenantId,
+            deploymentId,
+            config,
+          });
 
-        if (!deployment) {
-          return { error: "Deployment not found" };
+          return {
+            deploymentId: result.deploymentId,
+            status: result.status,
+            message: result.message,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[updateService]", { deploymentId, tenantId }, err);
+          return { error: message };
         }
-
-        // Merge new config with existing
-        const existingConfig = (deployment.config ?? {}) as Record<
-          string,
-          unknown
-        >;
-        const mergedConfig = { ...existingConfig, ...config };
-
-        // Update DB record
-        await prisma.deployment.update({
-          where: { id: deploymentId },
-          data: {
-            config: mergedConfig as unknown as Prisma.InputJsonValue,
-            status: "DEPLOYING"
-          }
-        });
-
-        // Queue Helm upgrade job
-        await enqueueDeployJob({
-          deploymentId,
-          action: "upgrade",
-          helmRelease: deployment.helmRelease,
-          namespace: deployment.namespace,
-          chartUrl: deployment.recipe.chartUrl,
-          chartVersion: deployment.recipe.chartVersion ?? undefined,
-          values: mergedConfig
-        });
-
-        return {
-          deploymentId,
-          status: "DEPLOYING",
-          message: `Updating '${deployment.name}' (${deployment.recipe.displayName}) with new configuration.`
-        };
       }
     }),
 
@@ -546,58 +380,22 @@ export function getTools(tenantId: string) {
           };
         }
 
-        const deployment = await prisma.deployment.findFirst({
-          where: { id: deploymentId, tenantId },
-          select: {
-            id: true,
-            name: true,
-            helmRelease: true,
-            namespace: true,
-            recipe: { select: { chartUrl: true, displayName: true } }
-          }
-        });
-
-        if (!deployment) {
-          return { error: "Deployment not found" };
-        }
-
-        // Check if other services depend on this one
-        const dependents = await prisma.deployment.findMany({
-          where: {
+        try {
+          const result = await initiateRemoval({
             tenantId,
-            dependsOn: { has: deploymentId },
-            status: { not: "STOPPED" }
-          },
-          select: { name: true }
-        });
+            deploymentId,
+          });
 
-        if (dependents.length > 0) {
-          const names = dependents.map((d) => d.name).join(", ");
           return {
-            error: `Cannot remove '${deployment.name}' — the following services depend on it: ${names}. Remove them first.`
+            deploymentId: result.deploymentId,
+            status: result.status,
+            message: result.message,
           };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[removeService]", { deploymentId, tenantId }, err);
+          return { error: message };
         }
-
-        // Update status
-        await prisma.deployment.update({
-          where: { id: deploymentId },
-          data: { status: "DELETING" }
-        });
-
-        // Queue Helm uninstall job
-        await enqueueDeployJob({
-          deploymentId,
-          action: "uninstall",
-          helmRelease: deployment.helmRelease,
-          namespace: deployment.namespace,
-          chartUrl: deployment.recipe.chartUrl
-        });
-
-        return {
-          deploymentId,
-          status: "DELETING",
-          message: `Removing '${deployment.name}' (${deployment.recipe.displayName}).`
-        };
       }
     }),
 

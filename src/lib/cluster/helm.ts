@@ -1,17 +1,20 @@
 /**
  * Helm CLI Wrapper
  *
- * Executes Helm commands via subprocess (execa).
+ * Executes Helm commands via subprocess (child_process).
  * Always uses --output json for parseable results.
  * Values are written to temp files and cleaned up after.
  */
 
-import { execa } from "execa";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import * as yaml from "yaml";
+
+const execFileAsync = promisify(execFile);
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -52,8 +55,8 @@ export interface HelmListEntry {
 const HELM_BIN = process.env.HELM_BIN || "helm";
 const DEFAULT_TIMEOUT = "5m";
 
-function getHelmEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...process.env as Record<string, string> };
+function getHelmEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
 
   // Pass KUBECONFIG if set
   if (process.env.KUBECONFIG) {
@@ -130,9 +133,10 @@ export async function helmInstall(
 
     console.log(`[helm] install ${options.releaseName} (${options.chart}) in ${options.namespace}`);
 
-    const result = await execa(HELM_BIN, args, {
+    const result = await execFileAsync(HELM_BIN, args, {
       env: getHelmEnv(),
       timeout: 600_000, // 10 min hard timeout on the process
+      maxBuffer: 10 * 1024 * 1024, // 10MB
     });
 
     return parseHelmStatusOutput(result.stdout);
@@ -183,9 +187,10 @@ export async function helmUpgrade(
 
     console.log(`[helm] upgrade ${options.releaseName} (${options.chart}) in ${options.namespace}`);
 
-    const result = await execa(HELM_BIN, args, {
+    const result = await execFileAsync(HELM_BIN, args, {
       env: getHelmEnv(),
       timeout: 600_000,
+      maxBuffer: 10 * 1024 * 1024,
     });
 
     return parseHelmStatusOutput(result.stdout);
@@ -206,7 +211,7 @@ export async function helmUninstall(
   try {
     console.log(`[helm] uninstall ${releaseName} from ${namespace}`);
 
-    await execa(HELM_BIN, [
+    await execFileAsync(HELM_BIN, [
       "uninstall",
       releaseName,
       "--namespace",
@@ -233,7 +238,7 @@ export async function helmStatus(
   namespace: string
 ): Promise<HelmReleaseStatus> {
   try {
-    const result = await execa(HELM_BIN, [
+    const result = await execFileAsync(HELM_BIN, [
       "status",
       releaseName,
       "--namespace",
@@ -266,7 +271,7 @@ export async function helmList(
   }
 
   try {
-    const result = await execa(HELM_BIN, args, {
+    const result = await execFileAsync(HELM_BIN, args, {
       env: getHelmEnv(),
       timeout: 30_000,
     });
@@ -292,12 +297,12 @@ export async function addRepo(
   try {
     console.log(`[helm] Adding repo ${name} → ${url}`);
 
-    await execa(HELM_BIN, ["repo", "add", name, url], {
+    await execFileAsync(HELM_BIN, ["repo", "add", name, url], {
       env: getHelmEnv(),
       timeout: 60_000,
     });
 
-    await execa(HELM_BIN, ["repo", "update", name], {
+    await execFileAsync(HELM_BIN, ["repo", "update", name], {
       env: getHelmEnv(),
       timeout: 60_000,
     });
@@ -309,7 +314,7 @@ export async function addRepo(
     if (msg.includes("already exists")) {
       // Still update
       try {
-        await execa(HELM_BIN, ["repo", "update", name], {
+        await execFileAsync(HELM_BIN, ["repo", "update", name], {
           env: getHelmEnv(),
           timeout: 60_000,
         });

@@ -3861,7 +3861,7 @@ execa@^5.1.1:
     signal-exit "^3.0.3"
     strip-final-newline "^2.0.0"
 
-execa@^9.6.0, execa@^9.6.1:
+execa@^9.6.0:
   version "9.6.1"
   resolved "https://registry.yarnpkg.com/execa/-/execa-9.6.1.tgz#5b90acedc6bdc0fa9b9a6ddf8f9cbb0c75a7c471"
   integrity sha512-9Be3ZoN4LmYR90tUoVu2te2BsbzHfhJyfEiAVfz7N5/zv+jduIfLrV2xdQXOHbaD6KgpGdO9PRPM1Y4Q9QkPkA==
@@ -4475,21 +4475,6 @@ ioredis@5.9.2:
   version "5.9.2"
   resolved "https://registry.yarnpkg.com/ioredis/-/ioredis-5.9.2.tgz#ffdce2a019950299716e88ee56cd5802b399b108"
   integrity sha512-tAAg/72/VxOUW7RQSX1pIxJVucYKcjFjfvj60L57jrZpYCHC3XN0WCQ3sNYL4Gmvv+7GPvTAjc+KSdeNuE8oWQ==
-  dependencies:
-    "@ioredis/commands" "1.5.0"
-    cluster-key-slot "^1.1.0"
-    debug "^4.3.4"
-    denque "^2.1.0"
-    lodash.defaults "^4.2.0"
-    lodash.isarguments "^3.1.0"
-    redis-errors "^1.2.0"
-    redis-parser "^3.0.0"
-    standard-as-callback "^2.1.0"
-
-ioredis@^5.9.3:
-  version "5.9.3"
-  resolved "https://registry.yarnpkg.com/ioredis/-/ioredis-5.9.3.tgz#e897af9f87ee4b7bc61d8bd6373f466aca43d4e0"
-  integrity sha512-VI5tMCdeoxZWU5vjHWsiE/Su76JGhBvWF1MJnV9ZtGltHk9BmD48oDq8Tj8haZ85aceXZMxLNDQZRVo5QKNgXA==
   dependencies:
     "@ioredis/commands" "1.5.0"
     cluster-key-slot "^1.1.0"

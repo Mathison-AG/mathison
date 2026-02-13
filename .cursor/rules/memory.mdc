@@ -81,7 +81,7 @@ Persistent scratchpad for things learned during development. Read this every ses
 - **Helm CLI output**: `helm install/upgrade --output json` includes `chart.metadata` (name, version, appVersion). `helm status --output json` does NOT include `chart` key — only `name`, `info`, `config`, `manifest`, `version`, `namespace`.
 - **Helm values**: Write to temp file in `os.tmpdir()` with `crypto.randomUUID()` name, pass via `--values <path>`, cleanup in `finally` block. Uses `yaml` package for serialization.
 - **Helm repo**: `helm repo add` errors with "already exists" if repo already added — catch and continue. Always `helm repo update` after adding.
-- **`execa` v9 is ESM-only**: Cannot run standalone scripts with `tsx` that import `execa` — CJS resolution fails. Works fine inside Next.js (bundler handles ESM). Use `node --experimental-strip-types` for standalone test scripts that avoid execa.
+- **`execa` replaced with `child_process`**: execa v9 was ESM-only and broke tsx CJS mode. Helm wrapper now uses `child_process.execFile` (promisified) — works everywhere.
 - **Tenant provisioning**: Signup route calls `provisionTenant()` fire-and-forget. If K8s is unavailable, signup still succeeds.
 - **kind cluster**: `kind create cluster --name mathison-dev` — sets context automatically. K8s v1.35.0. No KUBECONFIG env var needed.
 - **Helm label convention**: Bitnami charts use `app.kubernetes.io/instance=<releaseName>` for pod labeling. Use this to query pods for a specific release.
@@ -90,6 +90,22 @@ Persistent scratchpad for things learned during development. Read this every ses
 
 - `@kubernetes/client-node@1.4.0` — K8s API client
 - `yaml@2.8.2` — YAML serialization for Helm values
+- `bullmq@5.69.1` — Job queue (includes its own bundled ioredis)
+- `handlebars@4.7.8` — Values template rendering
+- `execa` **removed** — replaced with `child_process.execFile` (ESM-only breaks tsx)
+- `ioredis` **removed** — BullMQ bundles its own; top-level caused version conflict
+
+## Deployment Engine Patterns (Step 07)
+
+- **BullMQ connection**: Use plain options object `{ host, port, maxRetriesPerRequest: null }` for connection — NOT an IORedis instance. This avoids ioredis version conflicts between top-level and bullmq's bundled copy.
+- **Queue name**: `"deployments"` — used by both `deploymentQueue` (producer) and worker (consumer).
+- **Job names**: `JOB_NAMES.DEPLOY`, `.UNDEPLOY`, `.UPGRADE`, `.HEALTH_CHECK` from `@/lib/queue/jobs`.
+- **Engine pattern**: Agent tools call `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` from `@/lib/deployer/engine` — these handle recipe lookup, dependency resolution, secret generation, template rendering, DB record creation, and job queuing.
+- **Values template rendering**: Handlebars with `noEscape: true` (YAML safety). Context: `config`, `secrets`, `deps`, `tenant`, `platform`. Config defaults merged from recipe's configSchema.
+- **Dependency auto-deploy**: `resolveDependencies()` checks existing deployments, auto-deploys missing ones with priority 1 jobs. Connection info built from K8s service DNS: `<release>.<namespace>.svc.cluster.local`.
+- **Worker startup**: `tsx watch worker/index.ts` with `dotenv` loading `.env.local`. Worker must be running as a separate process for deploys to execute.
+- **execa removed**: Replaced with `child_process.execFile` (promisified) in Helm wrapper. execa v9 is ESM-only and breaks tsx CJS mode. Native child_process works everywhere.
+- **ioredis removed**: Top-level ioredis dependency removed. BullMQ uses its own bundled copy internally.
 
 ## Things to Revisit
 
