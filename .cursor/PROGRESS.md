@@ -4,12 +4,12 @@
 
 ## Current State
 
-- **Current step**: 03 — Authentication (Auth.js v5) (not started)
+- **Current step**: 04 — Service Catalog Backend (not started)
 - **App directory**: workspace root (not inside `mathison/`)
 - **Dev server**: not running (start with `yarn dev`)
 - **Docker services**: running (postgres on 5433, redis on 6379)
 - **Database**: migrated — all models created, pgvector active (v0.8.1)
-- **Last session**: Step 02 completed — full Prisma schema, migration, pgvector, seed stub
+- **Last session**: Step 03 completed — Auth.js v5 with credentials provider, JWT sessions, signup/login pages, middleware
 
 ## Step Completion
 
@@ -17,7 +17,7 @@
 |------|------|--------|-------|
 | 01 | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn |
 | 02 | Database Schema & Prisma | **Complete** | All models, enums, pgvector, migration applied, seed stub ready |
-| 03 | Authentication (Auth.js v5) | Not started | |
+| 03 | Authentication (Auth.js v5) | **Complete** | Credentials provider, JWT sessions, split config for Edge middleware, signup creates tenant |
 | 04 | Service Catalog Backend | Not started | |
 | 05 | AI Agent Core | Not started | |
 | 06 | Kubernetes & Helm Integration | Not started | |
@@ -44,6 +44,7 @@
 
 - Turbopack root warning about multiple lockfiles — mitigated with `turbopack.root: "."` in next.config.ts
 - Port 5432 occupied by `aucm` project — using 5433 for mathison postgres
+- Next.js 16 deprecation warning: "middleware" file convention is deprecated in favor of "proxy" — middleware still works but may need migration later
 
 ## Decisions Log
 
@@ -62,6 +63,9 @@ Record every architectural decision here. Future sessions depend on this.
 | D9 | App lives at workspace root, not inside `mathison/` | Step 01 | All | `mathison/` only has stale `.next` artifacts |
 | D10 | pgvector 0.8.1 with 1536-dim embedding columns | Step 02 | Steps 04-05 | Matches text-embedding-3-small output |
 | D11 | Migration name: `init` (timestamp: 20260213162759) | Step 02 | Future migrations | First migration creates all base tables |
+| D12 | Split auth config: `auth.config.ts` (Edge-safe) + `auth.ts` (full) | Step 03 | Middleware, all auth | Middleware runs in Edge runtime, can't import Prisma/pg |
+| D13 | No `@auth/prisma-adapter` — custom authorize + JWT only | Step 03 | Session handling | User model has custom fields, no Account/Session tables needed for credentials-only auth |
+| D14 | bcryptjs (pure JS) for password hashing, 12 salt rounds | Step 03 | Security | No native addon build issues |
 
 ## Cross-Step Dependencies
 

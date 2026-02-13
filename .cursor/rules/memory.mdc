@@ -36,10 +36,20 @@ Persistent scratchpad for things learned during development. Read this every ses
 - next@16.1.6, react@19.2.3, react-dom@19.2.3
 - prisma@7.4.0, @prisma/client@7.4.0, @prisma/adapter-pg@7.4.0
 - zod@4.3.6 — `ollama-ai-provider` warns about peer dep wanting zod@^3 but it works fine
-- next-auth@5.0.0-beta.30
+- next-auth@5.0.0-beta.30 — JWT strategy, credentials provider, no adapter
+- bcryptjs@3.0.3 — includes own types, `@types/bcryptjs` is a stub (still installed)
 - ai@6.0.85 (Vercel AI SDK)
+
+## Auth Patterns (Step 03)
+
+- **Split config pattern**: `auth.config.ts` (Edge-safe, no DB imports) for middleware + `auth.ts` (full, with Prisma) for server components/API routes. This is required because middleware runs in Edge runtime.
+- **No adapter needed**: Using JWT strategy with credentials-only auth means no `@auth/prisma-adapter` required. Custom `authorize` function queries Prisma directly.
+- **Session shape**: `session.user.{id, tenantId, role, name, email}` — augmented via `src/types/next-auth.d.ts` (extends both `next-auth` and `next-auth/jwt` modules).
+- **Auth guard pattern**: `const session = await auth(); if (!session?.user) return 401;` — use in all protected API routes and server components.
+- **Signup flow**: POST `/api/auth/signup` → creates Tenant + User in transaction → redirect to `/login`. Does NOT auto-login.
+- **Login flow**: Client-side `signIn("credentials", { email, password, redirect: false })` from `next-auth/react` for error handling.
+- **Next.js 16 middleware deprecation**: Warning about "middleware" → "proxy" convention appears but middleware still works fine in 16.1.6. May need migration in future.
 
 ## Things to Revisit
 
-- Step 03: `@auth/prisma-adapter` compatibility with Prisma 7 — may need adjustment (User model uses custom fields, not default Auth.js fields)
-- Step 03: Auth.js User model doesn't have `emailVerified`, `image`, or `Account`/`Session` tables — may need to add or use custom adapter
+- Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required
