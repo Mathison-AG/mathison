@@ -16,11 +16,20 @@ export const authConfig = {
         nextUrl.pathname.startsWith("/login") ||
         nextUrl.pathname.startsWith("/signup");
 
+      // Public API routes (no auth required for reads)
+      const isPublicApi =
+        nextUrl.pathname.startsWith("/api/catalog");
+
       // Redirect logged-in users away from auth pages
       if (isAuthPage) {
         if (isLoggedIn) {
           return Response.redirect(new URL("/", nextUrl));
         }
+        return true;
+      }
+
+      // Allow public API access (auth checked in route handlers for writes)
+      if (isPublicApi) {
         return true;
       }
 

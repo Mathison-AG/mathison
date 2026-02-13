@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 
 import { prisma } from "@/lib/db";
+import { provisionTenant } from "@/lib/tenant/manager";
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -98,8 +99,14 @@ export async function POST(req: Request) {
       return { tenant, user };
     });
 
-    // NOTE: K8s namespace creation is deferred to Step 06.
-    // For now, we just record the namespace in the DB.
+    // Provision K8s namespace (non-blocking — signup succeeds even if K8s fails)
+    provisionTenant({ slug, namespace }).catch((err) => {
+      console.error(
+        `[POST /api/auth/signup] K8s provisioning failed for ${namespace} (will retry):`,
+        err
+      );
+    });
+
     console.log(
       `[POST /api/auth/signup] Created user ${user.id} (${user.email}) with namespace ${namespace}`
     );

@@ -50,6 +50,48 @@ Persistent scratchpad for things learned during development. Read this every ses
 - **Login flow**: Client-side `signIn("credentials", { email, password, redirect: false })` from `next-auth/react` for error handling.
 - **Next.js 16 middleware deprecation**: Warning about "middleware" → "proxy" convention appears but middleware still works fine in 16.1.6. May need migration in future.
 
+## Catalog Patterns (Step 04)
+
+- **Seed script**: `prisma/seed.ts` uses relative imports (`../src/lib/...`) to avoid `@/` alias issues with `tsx`. Loads `.env.local` explicitly via `dotenv`.
+- **Public API routes**: Middleware allows all `/api/catalog/*` routes without auth. Write operations (POST, PUT, DELETE) check auth inside route handlers.
+- **Zod v4 gotcha**: `z.record()` requires 2 args: `z.record(z.string(), z.unknown())` — not just `z.record(z.unknown())`.
+- **Zod v4 error flattening**: Use `z.flattenError(parsed.error)` instead of `parsed.error.flatten()`.
+- **Prisma JSON casts**: To pass typed objects as Prisma JSON fields, cast through `unknown`: `data.configSchema as unknown as Prisma.InputJsonValue`.
+- **pgvector search**: Use `$queryRaw` with column aliases (`display_name AS "displayName"`) to match TypeScript interfaces. Cosine distance: `1 - (embedding <=> query::vector)`.
+- **Embedding generation**: Non-critical — if it fails, recipe is still created. Requires `OPENAI_API_KEY` in env.
+- **Seed recipes**: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio` — all PUBLISHED, OFFICIAL tier. Values templates use Handlebars syntax with `{{config.*}}`, `{{secrets.*}}`, `{{deps.*}}`, `{{tenant.*}}`, `{{cluster.*}}` placeholders.
+
+## AI Agent Patterns (Step 05)
+
+- **AI SDK v6 breaking changes**: `tool()` uses `inputSchema` (not `parameters`), `toDataStreamResponse()` → `toUIMessageStreamResponse()`, `maxSteps` → `stopWhen: stepCountIs(n)`.
+- **Zod v4 works with AI SDK v6**: The `FlexibleSchema` type accepts `z4.core.$ZodType` — Zod v4 schemas from `zod/v4` work directly with `tool()`.
+- **Ollama LanguageModelV1 cast**: `ollama-ai-provider` returns `LanguageModelV1` but AI SDK v6 expects `LanguageModelV3`. Cast via `as any as LanguageModelV3` in provider factory.
+- **Tool tenant scoping**: `getTools(tenantId)` closure-captures `tenantId` — all DB queries inside tools are automatically scoped.
+- **searchCatalog fallback**: If pgvector semantic search fails (e.g., no embeddings), falls back to text search (`contains` + `has`).
+- **deployService dependency resolution**: Auto-deploys dependencies before the main service, records `dependsOn` IDs.
+- **K8s/Helm stubs**: `getK8sPodStatus()`, `getK8sPodLogs()`, `enqueueDeployJob()` are placeholder functions — replace in Steps 06-07.
+- **Chat messages format**: AI SDK v6 uses `ModelMessage[]` type. Frontend `useChat` sends messages in this format automatically.
+- **streamText response**: Use `result.toUIMessageStreamResponse()` — this returns the UI message stream protocol that `useChat` on the frontend expects.
+
+## Kubernetes & Helm Patterns (Step 06)
+
+- **`@kubernetes/client-node` v1.4.0**: Uses `_from` (not `from`) in `V1NetworkPolicyIngressRule` — `from` is a JS reserved word that the K8s client maps to `_from`.
+- **KubeConfig loading**: `loadFromDefault()` works for kind, minikube, and any configured kubeconfig. Only use `loadFromCluster()` as fallback for in-cluster service accounts.
+- **K8s API error handling**: Errors have `statusCode` (409=conflict/exists, 404=not found). Check with `err.statusCode` for idempotent operations.
+- **Helm CLI output**: `helm install/upgrade --output json` includes `chart.metadata` (name, version, appVersion). `helm status --output json` does NOT include `chart` key — only `name`, `info`, `config`, `manifest`, `version`, `namespace`.
+- **Helm values**: Write to temp file in `os.tmpdir()` with `crypto.randomUUID()` name, pass via `--values <path>`, cleanup in `finally` block. Uses `yaml` package for serialization.
+- **Helm repo**: `helm repo add` errors with "already exists" if repo already added — catch and continue. Always `helm repo update` after adding.
+- **`execa` v9 is ESM-only**: Cannot run standalone scripts with `tsx` that import `execa` — CJS resolution fails. Works fine inside Next.js (bundler handles ESM). Use `node --experimental-strip-types` for standalone test scripts that avoid execa.
+- **Tenant provisioning**: Signup route calls `provisionTenant()` fire-and-forget. If K8s is unavailable, signup still succeeds.
+- **kind cluster**: `kind create cluster --name mathison-dev` — sets context automatically. K8s v1.35.0. No KUBECONFIG env var needed.
+- **Helm label convention**: Bitnami charts use `app.kubernetes.io/instance=<releaseName>` for pod labeling. Use this to query pods for a specific release.
+
+## Package Notes (updated)
+
+- `@kubernetes/client-node@1.4.0` — K8s API client
+- `yaml@2.8.2` — YAML serialization for Helm values
+
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required
+- `ollama-ai-provider` — check for a v2 release supporting LanguageModelV3

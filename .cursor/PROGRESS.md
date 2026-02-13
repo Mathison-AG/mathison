@@ -4,36 +4,38 @@
 
 ## Current State
 
-- **Current step**: 04 — Service Catalog Backend (not started)
+- **Current step**: 07 — Deployment Engine & BullMQ Worker (not started)
 - **App directory**: workspace root (not inside `mathison/`)
-- **Dev server**: not running (start with `yarn dev`)
+- **Dev server**: running on port 3000
 - **Docker services**: running (postgres on 5433, redis on 6379)
-- **Database**: migrated — all models created, pgvector active (v0.8.1)
-- **Last session**: Step 03 completed — Auth.js v5 with credentials provider, JWT sessions, signup/login pages, middleware
+- **K8s cluster**: kind `mathison-dev` running (K8s v1.35.0)
+- **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 test deployment (postgresql PENDING)
+- **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
+- **Last session**: Step 06 completed — K8s client wrapper, Helm CLI wrapper, ingress helper, tenant manager, quota helpers. Agent tool stubs wired to real implementations. Signup wired to provision K8s namespace.
 
 ## Step Completion
 
-| Step | Name | Status | Notes |
-|------|------|--------|-------|
-| 01 | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn |
-| 02 | Database Schema & Prisma | **Complete** | All models, enums, pgvector, migration applied, seed stub ready |
-| 03 | Authentication (Auth.js v5) | **Complete** | Credentials provider, JWT sessions, split config for Edge middleware, signup creates tenant |
-| 04 | Service Catalog Backend | Not started | |
-| 05 | AI Agent Core | Not started | |
-| 06 | Kubernetes & Helm Integration | Not started | |
-| 07 | Deployment Engine & BullMQ Worker | Not started | |
-| 08 | Frontend Shell & Layout | Not started | |
-| 09 | Chat Panel UI | Not started | |
-| 10 | Canvas (React Flow) | Not started | |
-| 11 | Catalog & Deployments UI | Not started | |
+| Step | Name                              | Status       | Notes                                                                                           |
+| ---- | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| 01   | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn                                          |
+| 02   | Database Schema & Prisma          | **Complete** | All models, enums, pgvector, migration applied, seed stub ready                                 |
+| 03   | Authentication (Auth.js v5)       | **Complete** | Credentials provider, JWT sessions, split config for Edge middleware, signup creates tenant     |
+| 04   | Service Catalog Backend           | **Complete** | 5 recipes seeded, CRUD API, semantic search (needs OPENAI_API_KEY), public catalog routes       |
+| 05   | AI Agent Core                     | **Complete** | LLM provider factory, system prompt, 10 tools, streaming chat, multi-step tool calling verified |
+| 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace. |
+| 07   | Deployment Engine & BullMQ Worker | Not started  |                                                                                                 |
+| 08   | Frontend Shell & Layout           | Not started  |                                                                                                 |
+| 09   | Chat Panel UI                     | Not started  |                                                                                                 |
+| 10   | Canvas (React Flow)               | Not started  |                                                                                                 |
+| 11   | Catalog & Deployments UI          | Not started  |                                                                                                 |
 
 ## Environment
 
-- **K8s cluster**: kind (local) — `kind create cluster --name mathison-dev` (created in Step 06)
+- **K8s cluster**: kind (local) — `kind-mathison-dev` context, K8s v1.35.0
 - **Docker**: installed, compose services running
-- **Helm**: installed at `/opt/homebrew/bin/helm`
+- **Helm**: installed at `/opt/homebrew/bin/helm` (v4.1.1), bitnami repo configured
 - **kubectl**: installed at `/usr/local/bin/kubectl`
-- **kind**: not yet installed (install in Step 06 via `brew install kind`)
+- **kind**: installed at `/opt/homebrew/bin/kind`
 - **Node.js**: v22.22.0, yarn 1.22.22
 - **Package manager**: yarn (user preference)
 - **LLM**: Anthropic — API key provided by user at Step 05
@@ -50,46 +52,61 @@
 
 Record every architectural decision here. Future sessions depend on this.
 
-| # | Decision | Made in | Affects | Rationale |
-|---|----------|---------|---------|-----------|
-| D1 | LLM provider: Anthropic (Claude) | Planning | Step 05, config | User preference |
-| D2 | K8s testing: local `kind` cluster | Planning | Steps 06-07, CI | Disposable, automatable, no shared infra risk |
-| D3 | Task order: backend first (01-07), then frontend (08-11) | Planning | All | Dependencies flow top-down |
-| D4 | Reference real Helm values from k8s repo for seed recipes | Planning | Step 04 | Battle-tested configs, realistic defaults |
-| D5 | Package manager: yarn (not npm) | Step 01 | All | User preference |
-| D6 | Prisma 7 with adapter pattern | Step 01 | Steps 02-07 | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
-| D7 | Prisma client output: `src/generated/prisma` | Step 01 | All imports | Prisma 7 requires explicit output; import from `@/generated/prisma/client` |
-| D8 | Postgres port: 5433 | Step 01 | .env.local, docker-compose | Avoid conflict with existing postgres on 5432 |
-| D9 | App lives at workspace root, not inside `mathison/` | Step 01 | All | `mathison/` only has stale `.next` artifacts |
-| D10 | pgvector 0.8.1 with 1536-dim embedding columns | Step 02 | Steps 04-05 | Matches text-embedding-3-small output |
-| D11 | Migration name: `init` (timestamp: 20260213162759) | Step 02 | Future migrations | First migration creates all base tables |
-| D12 | Split auth config: `auth.config.ts` (Edge-safe) + `auth.ts` (full) | Step 03 | Middleware, all auth | Middleware runs in Edge runtime, can't import Prisma/pg |
-| D13 | No `@auth/prisma-adapter` — custom authorize + JWT only | Step 03 | Session handling | User model has custom fields, no Account/Session tables needed for credentials-only auth |
-| D14 | bcryptjs (pure JS) for password hashing, 12 salt rounds | Step 03 | Security | No native addon build issues |
+| #   | Decision                                                                  | Made in  | Affects                    | Rationale                                                                                       |
+| --- | ------------------------------------------------------------------------- | -------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| D1  | LLM provider: Anthropic (Claude)                                          | Planning | Step 05, config            | User preference                                                                                 |
+| D2  | K8s testing: local `kind` cluster                                         | Planning | Steps 06-07, CI            | Disposable, automatable, no shared infra risk                                                   |
+| D3  | Task order: backend first (01-07), then frontend (08-11)                  | Planning | All                        | Dependencies flow top-down                                                                      |
+| D4  | Reference real Helm values from k8s repo for seed recipes                 | Planning | Step 04                    | Battle-tested configs, realistic defaults                                                       |
+| D5  | Package manager: yarn (not npm)                                           | Step 01  | All                        | User preference                                                                                 |
+| D6  | Prisma 7 with adapter pattern                                             | Step 01  | Steps 02-07                | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
+| D7  | Prisma client output: `src/generated/prisma`                              | Step 01  | All imports                | Prisma 7 requires explicit output; import from `@/generated/prisma/client`                      |
+| D8  | Postgres port: 5433                                                       | Step 01  | .env.local, docker-compose | Avoid conflict with existing postgres on 5432                                                   |
+| D9  | App lives at workspace root, not inside `mathison/`                       | Step 01  | All                        | `mathison/` only has stale `.next` artifacts                                                    |
+| D10 | pgvector 0.8.1 with 1536-dim embedding columns                            | Step 02  | Steps 04-05                | Matches text-embedding-3-small output                                                           |
+| D11 | Migration name: `init` (timestamp: 20260213162759)                        | Step 02  | Future migrations          | First migration creates all base tables                                                         |
+| D12 | Split auth config: `auth.config.ts` (Edge-safe) + `auth.ts` (full)        | Step 03  | Middleware, all auth       | Middleware runs in Edge runtime, can't import Prisma/pg                                         |
+| D13 | No `@auth/prisma-adapter` — custom authorize + JWT only                   | Step 03  | Session handling           | User model has custom fields, no Account/Session tables needed for credentials-only auth        |
+| D14 | bcryptjs (pure JS) for password hashing, 12 salt rounds                   | Step 03  | Security                   | No native addon build issues                                                                    |
+| D15 | Catalog API routes are public (middleware allows `/api/catalog/*`)        | Step 04  | Steps 05, 08-11            | Read endpoints public, writes check auth in route handler                                       |
+| D16 | Seed recipes without embeddings when OPENAI_API_KEY missing               | Step 04  | Step 05                    | Seed is safe to run without API key; re-run with key to add embeddings                          |
+| D17 | Embedding model: `text-embedding-3-small` via `@ai-sdk/openai`            | Step 04  | Step 05                    | 1536d vectors, requires OPENAI_API_KEY in .env.local                                            |
+| D18 | AI SDK v6 uses `inputSchema` not `parameters` for tools                   | Step 05  | All agent code             | Breaking change from AI SDK v5                                                                  |
+| D19 | AI SDK v6 uses `toUIMessageStreamResponse()` not `toDataStreamResponse()` | Step 05  | Steps 08-09                | Frontend `useChat` needs UI message stream protocol                                             |
+| D20 | AI SDK v6 uses `stopWhen: stepCountIs(10)` not `maxSteps: 10`             | Step 05  | Chat route                 | Multi-step tool calling control                                                                 |
+| D21 | Ollama provider returns LanguageModelV1 — needs cast for AI SDK v6        | Step 05  | Provider factory           | `ollama-ai-provider` not yet updated for V3                                                     |
+| D22 | K8s/Helm tool stubs return placeholder data — wired in Steps 06-07        | Step 05  | Steps 06-07                | DB operations fully functional, cluster ops stubbed                                             |
+| D23 | Test user: admin@mathison.dev / admin1234, workspace: mathison-dev        | Step 05  | Testing                    | Created via signup endpoint                                                                     |
+| D24 | K8s client uses `loadFromDefault()` first, fallback to `loadFromCluster()` | Step 06  | All cluster ops            | Works with kind, minikube, EKS, GKE — auto-detects context                                     |
+| D25 | `@kubernetes/client-node` v1.4.0 uses `_from` not `from` in NetworkPolicy | Step 06  | Network policies           | `from` is a JS reserved word, K8s client maps it to `_from`                                     |
+| D26 | Helm CLI wrapper uses `yaml` package for serializing values to temp files  | Step 06  | Step 07                    | Values written to tmpdir, cleaned up in `finally` block                                         |
+| D27 | Signup now provisions K8s namespace (non-blocking, fire-and-forget)        | Step 06  | Steps 07-11                | Namespace + quota + network policy created on signup                                            |
+| D28 | `generateSecret()` upgraded to `crypto.randomBytes()` for strong secrets  | Step 06  | Deployment secrets          | Replaces Math.random-based generator from Step 05                                               |
+| D29 | `enqueueDeployJob()` stub remains — wired in Step 07 with BullMQ          | Step 06  | Step 07                    | Only K8s read ops wired in Step 06, deploy queue deferred                                       |
 
 ## Cross-Step Dependencies
 
 Decisions in early steps that later steps MUST respect. Check this before starting any step.
 
-| Source Step | Dependency | Consumer Steps | Detail |
-|------------|-----------|----------------|--------|
-| 01 | Path alias `@/*` → `src/*` | All | Every import uses this |
-| 01 | shadcn/ui component set | 08-11 | Which components are available |
-| 01 | Prisma import path: `@/generated/prisma/client` | 02-07, 11 | NOT `@prisma/client` |
-| 01 | Prisma config in `prisma.config.ts` (not schema url) | 02-07 | Prisma 7 pattern |
-| 01 | `zod` v4 — use `zod/v4` import path | All | Zod 4 has different import pattern |
-| 02 | Prisma field names (snake_case in DB, camelCase in TS) | 03-07, 11 | Query field names |
-| 02 | JSON field types (`configSchema`, `aiHints`, etc.) | 04, 05, 07 | Shape of JSON data |
-| 03 | Session shape: `session.user.{id, tenantId, role}` | 04-07, 11 | Every auth check uses this |
-| 03 | Auth guard pattern: `const session = await auth()` | 04-07, 11 | Standard in all protected routes |
-| 04 | Seed recipe slugs: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio` | 05, 10, 11 | Tool results reference these |
-| 04 | Embedding model: `text-embedding-3-small` (1536d) | Schema col | Must match vector column size |
-| 05 | Tool names: `searchCatalog`, `deployService`, etc. | 09 | Chat UI renders tool-specific cards |
-| 05 | Tool return shapes | 09 | UI must match the data structure |
-| 06 | Helm wrapper function signatures | 07 | Worker calls these directly |
-| 06 | K8s wrapper function signatures | 05, 07 | Agent tools + worker call these |
-| 07 | BullMQ queue name: `"deployments"` | 05 | Agent tools enqueue to this |
-| 07 | Job data shapes (`DeployJobData`, etc.) | 05 | Must match what tools send |
-| 08 | ChatProvider location in component tree | 09 | Chat components use context from this |
-| 08 | Sheet component for chat panel | 09 | Chat content goes inside this shell |
-| 10 | `useCanvasData` hook query key: `["stack"]` | 09 | Chat invalidates this after deploys |
+| Source Step | Dependency                                                              | Consumer Steps | Detail                                |
+| ----------- | ----------------------------------------------------------------------- | -------------- | ------------------------------------- |
+| 01          | Path alias `@/*` → `src/*`                                              | All            | Every import uses this                |
+| 01          | shadcn/ui component set                                                 | 08-11          | Which components are available        |
+| 01          | Prisma import path: `@/generated/prisma/client`                         | 02-07, 11      | NOT `@prisma/client`                  |
+| 01          | Prisma config in `prisma.config.ts` (not schema url)                    | 02-07          | Prisma 7 pattern                      |
+| 01          | `zod` v4 — use `zod/v4` import path                                     | All            | Zod 4 has different import pattern    |
+| 02          | Prisma field names (snake_case in DB, camelCase in TS)                  | 03-07, 11      | Query field names                     |
+| 02          | JSON field types (`configSchema`, `aiHints`, etc.)                      | 04, 05, 07     | Shape of JSON data                    |
+| 03          | Session shape: `session.user.{id, tenantId, role}`                      | 04-07, 11      | Every auth check uses this            |
+| 03          | Auth guard pattern: `const session = await auth()`                      | 04-07, 11      | Standard in all protected routes      |
+| 04          | Seed recipe slugs: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio` | 05, 10, 11     | Tool results reference these          |
+| 04          | Embedding model: `text-embedding-3-small` (1536d)                       | Schema col     | Must match vector column size         |
+| 05          | Tool names: `searchCatalog`, `deployService`, etc.                      | 09             | Chat UI renders tool-specific cards   |
+| 05          | Tool return shapes                                                      | 09             | UI must match the data structure      |
+| 06          | Helm wrapper function signatures                                        | 07             | Worker calls these directly           |
+| 06          | K8s wrapper function signatures                                         | 05, 07         | Agent tools + worker call these       |
+| 07          | BullMQ queue name: `"deployments"`                                      | 05             | Agent tools enqueue to this           |
+| 07          | Job data shapes (`DeployJobData`, etc.)                                 | 05             | Must match what tools send            |
+| 08          | ChatProvider location in component tree                                 | 09             | Chat components use context from this |
+| 08          | Sheet component for chat panel                                          | 09             | Chat content goes inside this shell   |
+| 10          | `useCanvasData` hook query key: `["stack"]`                             | 09             | Chat invalidates this after deploys   |
