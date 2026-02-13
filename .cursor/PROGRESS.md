@@ -4,14 +4,14 @@
 
 ## Current State
 
-- **Current step**: 09 — Chat Panel UI (not started)
+- **Current step**: 10 — Canvas (React Flow) (not started)
 - **App directory**: workspace root (not inside `mathison/`)
 - **Dev server**: running on port 3000
 - **Docker services**: running (postgres on 5433, redis on 6379)
 - **K8s cluster**: kind `mathison-dev` running (K8s v1.35.0)
 - **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 test deployment (postgresql PENDING)
 - **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
-- **Last session**: Step 08 completed — Frontend shell with dashboard layout, collapsible sidebar, header with workspace badge and user menu, chat panel FAB + Sheet, placeholder pages, TanStack Query + next-themes providers, dark mode support.
+- **Last session**: Step 09 completed — Full chat panel UI with streaming, markdown rendering, tool invocation cards, suggested prompts, auto-scroll, stop button. Updated chat API route to convert UIMessage[] to ModelMessage[] for AI SDK v6 compatibility.
 
 ## Step Completion
 
@@ -25,7 +25,7 @@
 | 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace. |
 | 07   | Deployment Engine & BullMQ Worker | **Complete** | BullMQ queues, deployer engine, worker, secrets, templates, deps. execa→child_process migration |
 | 08   | Frontend Shell & Layout           | **Complete** | Dashboard layout, sidebar, header, chat FAB, providers, dark mode, placeholder pages            |
-| 09   | Chat Panel UI                     | Not started  |                                                                                                 |
+| 09   | Chat Panel UI                     | **Complete** | Chat provider, messages, tool cards, input, suggested prompts, streaming, markdown              |
 | 10   | Canvas (React Flow)               | Not started  |                                                                                                 |
 | 11   | Catalog & Deployments UI          | Not started  |                                                                                                 |
 
@@ -96,6 +96,10 @@ Record every architectural decision here. Future sessions depend on this.
 | D40 | Chat panel: standalone FAB + Sheet component, state self-contained        | Step 08  | Step 09                    | Step 09 replaces placeholder content with real chat UI                                          |
 | D41 | Theme hydration: `useSyncExternalStore` for mounted detection             | Step 08  | UI patterns                | Avoids react-hooks/set-state-in-effect lint error with `useState`+`useEffect`                   |
 | D42 | Cloud-first rebrand: hide K8s terminology from all user-facing text       | Post-08  | All UI, system prompt, tools | Users deploy "services" not "Helm charts". Internal code unchanged.                             |
+| D43 | AI SDK v6 `useChat` sends UIMessage[], route converts via `convertToModelMessages` | Step 09 | Chat API route           | `DefaultChatTransport` sends UIMessage[] format; server must convert before `streamText`         |
+| D44 | `@ai-sdk/react` v3 for `useChat` hook — manual input state management    | Step 09  | Chat UI                      | v6 `useChat` returns `sendMessage`/`status`/`stop`, not `handleSubmit`/`isLoading`              |
+| D45 | Tool parts use `type: 'tool-{name}'` with states: `input-available`, `output-available`, `output-error` | Step 09 | Chat UI | Replaces v5 `toolInvocations` with `call`/`result` states                                        |
+| D46 | ChatProvider wraps useChat + invalidates `["deployments"]` + `["stack"]` on finish | Step 09 | Steps 10-11          | Chat provider is self-contained inside ChatPanel component                                       |
 
 ## Cross-Step Dependencies
 

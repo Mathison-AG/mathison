@@ -1,11 +1,11 @@
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, convertToModelMessages } from "ai";
 
 import { auth } from "@/lib/auth";
 import { getProvider } from "@/lib/agent/provider";
 import { getTools } from "@/lib/agent/tools";
 import { systemPrompt } from "@/lib/agent/system-prompt";
 
-import type { ModelMessage } from "ai";
+import type { UIMessage } from "ai";
 
 export async function POST(req: Request) {
   try {
@@ -15,8 +15,8 @@ export async function POST(req: Request) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // 2. Parse messages from request body
-    const body = (await req.json()) as { messages?: ModelMessage[] };
+    // 2. Parse UI messages from request body (sent by useChat)
+    const body = (await req.json()) as { messages?: UIMessage[] };
 
     if (!body.messages || !Array.isArray(body.messages)) {
       return new Response(
@@ -29,11 +29,16 @@ export async function POST(req: Request) {
     const provider = getProvider();
     const tools = getTools(session.user.tenantId);
 
-    // 4. Stream the response with multi-step tool calling
+    // 4. Convert UI messages to model messages for streamText
+    const modelMessages = await convertToModelMessages(body.messages, {
+      tools,
+    });
+
+    // 5. Stream the response with multi-step tool calling
     const result = streamText({
       model: provider,
       system: systemPrompt,
-      messages: body.messages,
+      messages: modelMessages,
       tools,
       stopWhen: stepCountIs(10)
     });

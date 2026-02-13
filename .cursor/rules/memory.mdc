@@ -129,6 +129,25 @@ Persistent scratchpad for things learned during development. Read this every ses
 - **Internal code**: Variable names, logging, developer-facing code still use K8s/Helm terminology — only user-facing strings changed.
 - **Decision D42 in PROGRESS.md** tracks this.
 
+## Chat UI Patterns (Step 09)
+
+- **AI SDK v6 `useChat` API**: Returns `{ messages, sendMessage, status, error, stop }` — NOT `handleSubmit`/`handleInputChange`/`input`/`isLoading`.
+- **Manual input state**: `useChat` v6 does NOT manage input state. Use `useState` for the input field, call `sendMessage({ text })` on submit.
+- **`DefaultChatTransport`**: `useChat` needs explicit `transport: new DefaultChatTransport({ api: "/api/chat" })` — import from `ai`.
+- **UIMessage parts**: Messages have `parts` array, not `content`/`toolInvocations`. Parts: `TextUIPart` (`type: 'text'`, `text`, `state`), tool parts (`type: 'tool-{name}'`, `toolCallId`, `state`, `input`, `output`), `ReasoningUIPart`, `StepStartUIPart`.
+- **Tool part states**: `input-streaming`, `input-available`, `output-available`, `output-error` — NOT `call`/`result`.
+- **Chat status**: `'ready' | 'submitted' | 'streaming' | 'error'` — use instead of `isLoading`.
+- **`convertToModelMessages`**: Server route must convert UIMessage[] → ModelMessage[] before passing to `streamText`. Import from `ai`.
+- **`@ai-sdk/react` v3**: Separate package — must `yarn add @ai-sdk/react` (not re-exported from `ai`).
+- **ChatProvider placement**: Self-contained inside `ChatPanel` component (wraps `ChatPanelInner`). No need to add to global providers.
+- **Markdown in chat**: `react-markdown` v10 renders assistant text. Prose classes from Tailwind typography for styling.
+- **Auto-scroll**: `useEffect` with `bottomRef.current?.scrollIntoView({ behavior: "smooth" })` triggered by messages/status changes.
+
+## Package Notes (updated)
+
+- `@ai-sdk/react@3.0.88` — React hooks for AI SDK v6 (useChat, etc.)
+- `react-markdown@10.1.0` — Markdown rendering in chat messages
+
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required

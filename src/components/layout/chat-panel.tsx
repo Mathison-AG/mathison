@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, X } from "lucide-react";
+import { Bot, MessageCircle, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +11,31 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 
+import { ChatProvider, useChatContext } from "@/components/chat/chat-provider";
+import { ChatMessages } from "@/components/chat/chat-messages";
+import { ChatInput, SuggestedPrompts } from "@/components/chat/chat-input";
+
+// ─── Outer wrapper with provider ─────────────────────────
+
 export function ChatPanel() {
+  return (
+    <ChatProvider>
+      <ChatPanelInner />
+    </ChatProvider>
+  );
+}
+
+// ─── Inner panel (has access to ChatContext) ─────────────
+
+function ChatPanelInner() {
   const [open, setOpen] = useState(false);
+  const { messages, sendMessage } = useChatContext();
+
+  const isEmpty = messages.length === 0;
+
+  function handleSuggestion(text: string) {
+    sendMessage({ text });
+  }
 
   return (
     <>
@@ -36,10 +59,11 @@ export function ChatPanel() {
           showCloseButton={false}
           aria-describedby={undefined}
         >
+          {/* Header */}
           <SheetHeader className="flex flex-row items-center justify-between border-b px-4 py-3 space-y-0">
             <div className="flex items-center gap-2">
               <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <MessageCircle className="size-4" />
+                <Bot className="size-4" />
               </div>
               <SheetTitle className="text-base">Mathison AI</SheetTitle>
             </div>
@@ -54,39 +78,28 @@ export function ChatPanel() {
             </Button>
           </SheetHeader>
 
-          {/* Chat content — placeholder for Step 09 */}
-          <div className="flex-1 flex items-center justify-center p-6">
-            <div className="text-center space-y-3">
-              <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
-                <MessageCircle className="size-6 text-muted-foreground" />
+          {/* Messages area */}
+          {isEmpty ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 p-6">
+              <div className="text-center space-y-3">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
+                  <Bot className="size-6 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="font-medium">Chat with Mathison</p>
+                  <p className="text-sm text-muted-foreground">
+                    Deploy services, check status, or manage your apps.
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="font-medium">Chat with Mathison</p>
-                <p className="text-sm text-muted-foreground">
-                  Ask me to deploy services, check status, or manage your
-                  apps.
-                </p>
-              </div>
+              <SuggestedPrompts onSelect={handleSuggestion} />
             </div>
-          </div>
+          ) : (
+            <ChatMessages />
+          )}
 
-          {/* Input area placeholder */}
-          <div className="border-t p-4">
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
-              <input
-                type="text"
-                placeholder="Type a message..."
-                className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                disabled
-              />
-              <Button size="sm" variant="ghost" disabled>
-                Send
-              </Button>
-            </div>
-            <p className="mt-2 text-center text-xs text-muted-foreground">
-              Chat will be active in the next step
-            </p>
-          </div>
+          {/* Input */}
+          <ChatInput />
         </SheetContent>
       </Sheet>
     </>
