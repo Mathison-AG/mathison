@@ -1,0 +1,22 @@
+[00:07:55.818] Server  ERROR   ⨯ Error: ENOENT: no such file or directory, open '/Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/.next/dev/server/app/_not-found/page/build-manifest.json'
+[00:07:55.836] Server  ERROR   Error: Cannot find module 'next/dist/pages/_error'
+Require stack:
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/on-demand-entry-handler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/hot-reloader-turbopack.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-server.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/start-server.js
+[00:07:55.850] Server  ERROR   ⨯ Error: Cannot find module 'next/dist/pages/_error'
+Require stack:
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/on-demand-entry-handler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/hot-reloader-turbopack.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-server.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/start-server.js
+[00:07:55.872] Server  ERROR   Error: Cannot find module 'next/dist/pages/_error'
+Require stack:
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/on-demand-entry-handler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/dev/hot-reloader-turbopack.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/router-server.js
+- /Users/zentrale/IT/private/mathison/infra/ai-k8s/mathison/node_modules/next/dist/server/lib/start-server.js

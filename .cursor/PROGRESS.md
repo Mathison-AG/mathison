@@ -4,18 +4,18 @@
 
 ## Current State
 
-- **Current step**: 01 — Project Bootstrap (not started)
-- **App directory**: `mathison/` (not yet created)
-- **Dev server**: not running
-- **Docker services**: not running
-- **Database**: not migrated
-- **Last session**: initial planning — task files created
+- **Current step**: 02 — Database Schema & Prisma (not started)
+- **App directory**: `mathison/` (created, scaffolded)
+- **Dev server**: not running (start with `cd mathison && yarn dev`)
+- **Docker services**: running (postgres on 5433, redis on 6379)
+- **Database**: not migrated (minimal schema, no models yet)
+- **Last session**: Step 01 completed — full project bootstrap with Prisma 7, shadcn/ui, all deps
 
 ## Step Completion
 
 | Step | Name | Status | Notes |
 |------|------|--------|-------|
-| 01 | Project Bootstrap & Configuration | Not started | |
+| 01 | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn |
 | 02 | Database Schema & Prisma | Not started | |
 | 03 | Authentication (Auth.js v5) | Not started | |
 | 04 | Service Catalog Backend | Not started | |
@@ -30,16 +30,20 @@
 ## Environment
 
 - **K8s cluster**: kind (local) — `kind create cluster --name mathison-dev` (created in Step 06)
-- **Docker**: installed
+- **Docker**: installed, compose services running
 - **Helm**: installed at `/opt/homebrew/bin/helm`
 - **kubectl**: installed at `/usr/local/bin/kubectl`
 - **kind**: not yet installed (install in Step 06 via `brew install kind`)
-- **Node.js**: v22.22.0, npm 11.8.0 ✅
+- **Node.js**: v22.22.0, yarn 1.22.22
+- **Package manager**: yarn (user preference)
 - **LLM**: Anthropic — API key provided by user at Step 05
+- **PostgreSQL**: port 5433 (5432 is used by another project)
+- **Redis**: port 6379
 
 ## Known Issues
 
-(none yet)
+- Turbopack root warning about multiple lockfiles — mitigated with `turbopack.root: "."` in next.config.ts
+- Port 5432 occupied by `aucm` project — using 5433 for mathison postgres
 
 ## Decisions Log
 
@@ -51,6 +55,10 @@ Record every architectural decision here. Future sessions depend on this.
 | D2 | K8s testing: local `kind` cluster | Planning | Steps 06-07, CI | Disposable, automatable, no shared infra risk |
 | D3 | Task order: backend first (01-07), then frontend (08-11) | Planning | All | Dependencies flow top-down |
 | D4 | Reference real Helm values from k8s repo for seed recipes | Planning | Step 04 | Battle-tested configs, realistic defaults |
+| D5 | Package manager: yarn (not npm) | Step 01 | All | User preference |
+| D6 | Prisma 7 with adapter pattern | Step 01 | Steps 02-07 | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
+| D7 | Prisma client output: `src/generated/prisma` | Step 01 | All imports | Prisma 7 requires explicit output; import from `@/generated/prisma/client` |
+| D8 | Postgres port: 5433 | Step 01 | .env.local, docker-compose | Avoid conflict with existing postgres on 5432 |
 
 ## Cross-Step Dependencies
 
@@ -60,6 +68,9 @@ Decisions in early steps that later steps MUST respect. Check this before starti
 |------------|-----------|----------------|--------|
 | 01 | Path alias `@/*` → `src/*` | All | Every import uses this |
 | 01 | shadcn/ui component set | 08-11 | Which components are available |
+| 01 | Prisma import path: `@/generated/prisma/client` | 02-07, 11 | NOT `@prisma/client` |
+| 01 | Prisma config in `prisma.config.ts` (not schema url) | 02-07 | Prisma 7 pattern |
+| 01 | `zod` v4 — use `zod/v4` import path | All | Zod 4 has different import pattern |
 | 02 | Prisma field names (snake_case in DB, camelCase in TS) | 03-07, 11 | Query field names |
 | 02 | JSON field types (`configSchema`, `aiHints`, etc.) | 04, 05, 07 | Shape of JSON data |
 | 03 | Session shape: `session.user.{id, tenantId, role}` | 04-07, 11 | Every auth check uses this |

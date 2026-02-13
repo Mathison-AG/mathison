@@ -1,0 +1,9 @@
+// Minimal schema for Step 01 bootstrap — full schema is added in Step 02
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

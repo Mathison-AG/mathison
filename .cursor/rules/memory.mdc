@@ -1,9 +1,3 @@
----
-description: 
-globs: 
-alwaysApply: true
----
-
 # Agent Memory
 
 Persistent scratchpad for things learned during development. Read this every session. Update it as you go — add discoveries, gotchas, patterns that worked. Delete entries that are no longer relevant.
@@ -18,37 +12,29 @@ Persistent scratchpad for things learned during development. Read this every ses
 
 ## Gotchas & Workarounds
 
-(empty — will be populated during development)
-
-<!-- Example entries:
-- `execa` v9 is ESM-only — use `import { execa } from "execa"` not require. If CJS context needed, use dynamic `await import("execa")`
-- Prisma `Json` fields return `Prisma.JsonValue` not `Record<string, any>` — cast with `as Record<string, unknown>` and validate with Zod at runtime
-- shadcn/ui Sheet: use `open` + `onOpenChange` props for controlled mode, NOT internal state
--->
+- **Prisma 7 breaking changes**: `url` removed from `datasource` block in schema.prisma. URL now goes in `prisma.config.ts` using `defineConfig()`. Generator must be `"prisma-client"` (not `"prisma-client-js"`), with explicit `output` path.
+- **Prisma 7 import path**: Import `PrismaClient` from `@/generated/prisma/client` (NOT `@prisma/client`). The `@prisma/client` package no longer exports `PrismaClient` directly.
+- **Prisma 7 adapter required**: Must use `@prisma/adapter-pg` with `pg.Pool` to create the client. Pass `adapter` to `new PrismaClient({ adapter })`.
+- **Prisma config dotenv**: `prisma.config.ts` must explicitly load `.env.local` via `config({ path: ".env.local" })` from `dotenv` — Prisma CLI doesn't auto-load Next.js env files.
+- **Port conflict**: Postgres runs on port 5433 (not 5432) because another project (`aucm`) occupies 5432. All DATABASE_URL references use 5433.
+- **Zod v4**: Installed as `zod@4.3.6`. For imports use `import { z } from "zod/v4"` — the v4 subpath export.
+- **Next.js 16 lint**: Uses `eslint .` directly, not `next lint` (which errors in 16.x).
+- **Turbopack root warning**: Set `turbopack.root: "."` in `next.config.ts` to suppress lockfile detection warning.
 
 ## Patterns That Worked
 
-(empty — will be populated during development)
-
-<!-- Example entries:
-- Auth guard one-liner for API routes: `const session = await auth(); if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });`
-- Embedding generation reliably takes ~200ms per recipe — batch seed inserts, don't generate embeddings inline
--->
+- shadcn/ui init with `--defaults` flag works cleanly with Tailwind v4 in Next.js 16
+- `npx create-next-app@latest --use-yarn` for yarn-based projects
 
 ## Package Notes
 
-(empty — will be populated during development)
-
-<!-- Example entries:
-- next-auth@5.0.0-beta.25 — stable enough for credentials provider, skip beta.26 (broke JWT callback types)
-- @xyflow/react needs explicit CSS import: `import "@xyflow/react/dist/style.css"`
--->
+- next@16.1.6, react@19.2.3, react-dom@19.2.3
+- prisma@7.4.0, @prisma/client@7.4.0, @prisma/adapter-pg@7.4.0
+- zod@4.3.6 — `ollama-ai-provider` warns about peer dep wanting zod@^3 but it works fine
+- next-auth@5.0.0-beta.30
+- ai@6.0.85 (Vercel AI SDK)
 
 ## Things to Revisit
 
-(empty — will be populated during development)
-
-<!-- Example entries:
-- Step 04: seed script generates embeddings sequentially — could parallelize with Promise.all if it's too slow
-- Step 07: BullMQ worker doesn't retry failed jobs yet — add retry logic before production
--->
+- Step 02: Need to update prisma schema with full models, ensure pgvector extension works with Prisma 7 adapter pattern
+- Step 02: `@auth/prisma-adapter` compatibility with Prisma 7 — may need adjustment
