@@ -31,25 +31,25 @@ const postgresql: RecipeCreateInput = {
       options: ["16", "15", "14"],
       default: "16",
       label: "PostgreSQL Version",
-      description: "Major version of PostgreSQL",
+      description: "Major version of PostgreSQL"
     },
     storage_size: {
       type: "string",
       default: "8Gi",
       label: "Storage Size",
-      description: "Persistent volume size (e.g. 8Gi, 20Gi)",
+      description: "Persistent volume size (e.g. 8Gi, 20Gi)"
     },
     database: {
       type: "string",
       default: "app",
       label: "Database Name",
-      description: "Name of the default database to create",
+      description: "Name of the default database to create"
     },
     username: {
       type: "string",
       default: "app",
       label: "Username",
-      description: "Database user to create",
+      description: "Database user to create"
     },
     max_connections: {
       type: "number",
@@ -57,20 +57,17 @@ const postgresql: RecipeCreateInput = {
       min: 10,
       max: 500,
       label: "Max Connections",
-      description: "Maximum number of concurrent connections",
-    },
+      description: "Maximum number of concurrent connections"
+    }
   },
   secretsSchema: {
     password: {
       description: "Database password",
       generate: true,
-      length: 24,
-    },
+      length: 24
+    }
   },
   valuesTemplate: `architecture: standalone
-
-image:
-  tag: "{{config.version}}"
 
 auth:
   database: "{{config.database}}"
@@ -99,15 +96,15 @@ primary:
   healthCheck: {
     type: "tcp",
     port: 5432,
-    intervalSeconds: 10,
+    intervalSeconds: 10
   },
   aiHints: {
     summary:
       "PostgreSQL is a powerful open-source relational database management system",
     whenToSuggest:
       "User needs a database, SQL database, persistent storage, relational data, structured data, or a backend database for an application",
-    pairsWellWith: ["redis", "n8n"],
-  },
+    pairsWellWith: ["redis", "n8n"]
+  }
 };
 
 // ─── Redis ───────────────────────────────────────────────
@@ -129,44 +126,36 @@ const redis: RecipeCreateInput = {
       options: ["7", "6"],
       default: "7",
       label: "Redis Version",
-      description: "Major version of Redis",
+      description: "Major version of Redis"
     },
     storage_size: {
       type: "string",
       default: "1Gi",
       label: "Storage Size",
-      description: "Persistent volume size for RDB snapshots",
+      description: "Persistent volume size for RDB snapshots"
     },
     maxmemory: {
       type: "string",
       default: "100mb",
       label: "Max Memory",
-      description: "Maximum memory limit (e.g. 100mb, 256mb)",
+      description: "Maximum memory limit (e.g. 100mb, 256mb)"
     },
     maxmemory_policy: {
       type: "select",
-      options: [
-        "allkeys-lru",
-        "volatile-lru",
-        "allkeys-random",
-        "noeviction",
-      ],
+      options: ["allkeys-lru", "volatile-lru", "allkeys-random", "noeviction"],
       default: "allkeys-lru",
       label: "Eviction Policy",
-      description: "What to do when max memory is reached",
-    },
+      description: "What to do when max memory is reached"
+    }
   },
   secretsSchema: {
     password: {
       description: "Redis password",
       generate: true,
-      length: 24,
-    },
+      length: 24
+    }
   },
   valuesTemplate: `architecture: standalone
-
-image:
-  tag: "{{config.version}}"
 
 auth:
   enabled: true
@@ -198,15 +187,15 @@ replica:
   healthCheck: {
     type: "tcp",
     port: 6379,
-    intervalSeconds: 10,
+    intervalSeconds: 10
   },
   aiHints: {
     summary:
       "Redis is an in-memory data store for caching, session management, and message brokering",
     whenToSuggest:
       "User needs caching, a message broker, session store, rate limiting, pub/sub, or a fast key-value store",
-    pairsWellWith: ["postgresql", "n8n"],
-  },
+    pairsWellWith: ["postgresql", "n8n"]
+  }
 };
 
 // ─── n8n ─────────────────────────────────────────────────
@@ -223,7 +212,7 @@ const n8n: RecipeCreateInput = {
     "zapier",
     "integration",
     "no-code",
-    "low-code",
+    "low-code"
   ],
   iconUrl: undefined,
   sourceType: "helm",
@@ -236,15 +225,15 @@ const n8n: RecipeCreateInput = {
       default: "regular",
       label: "Execution Mode",
       description:
-        "Regular: single process. Queue: separate workers for scalability.",
-    },
+        "Regular: single process. Queue: separate workers for scalability."
+    }
   },
   secretsSchema: {
     encryption_key: {
       description: "n8n encryption key for credentials stored in DB",
       generate: true,
-      length: 32,
-    },
+      length: 32
+    }
   },
   valuesTemplate: `main:
   config:
@@ -299,14 +288,14 @@ ingress:
     {
       service: "postgresql",
       alias: "n8n-db",
-      config: { database: "n8n", username: "n8n", storage_size: "8Gi" },
-    },
+      config: { database: "n8n", username: "n8n", storage_size: "8Gi" }
+    }
   ],
   ingressConfig: {
     enabled: true,
     hostnameTemplate: "n8n-{tenant}.{domain}",
     port: 5678,
-    path: "/",
+    path: "/"
   },
   resourceDefaults: { cpu: "50m", memory: "256Mi" },
   resourceLimits: { cpu: "500m", memory: "512Mi" },
@@ -314,15 +303,15 @@ ingress:
     type: "http",
     port: 5678,
     path: "/healthz",
-    intervalSeconds: 15,
+    intervalSeconds: 15
   },
   aiHints: {
     summary:
       "n8n is a workflow automation platform, a self-hosted alternative to Zapier",
     whenToSuggest:
       "User needs workflow automation, API integration, task scheduling, Zapier/Make alternative, or wants to connect multiple services together",
-    pairsWellWith: ["postgresql", "redis"],
-  },
+    pairsWellWith: ["postgresql", "redis"]
+  }
 };
 
 // ─── Uptime Kuma ─────────────────────────────────────────
@@ -333,13 +322,7 @@ const uptimeKuma: RecipeCreateInput = {
   description:
     "Self-hosted monitoring tool with a beautiful status page. Monitor HTTP, TCP, DNS, Docker, and more. Get alerts via email, Slack, Telegram, and 90+ notification services.",
   category: "monitoring",
-  tags: [
-    "monitoring",
-    "uptime",
-    "status-page",
-    "alerts",
-    "health-check",
-  ],
+  tags: ["monitoring", "uptime", "status-page", "alerts", "health-check"],
   iconUrl: undefined,
   sourceType: "helm",
   chartUrl: "https://helm.irsigler.cloud",
@@ -349,8 +332,8 @@ const uptimeKuma: RecipeCreateInput = {
       type: "string",
       default: "2Gi",
       label: "Storage Size",
-      description: "Persistent volume size for SQLite database",
-    },
+      description: "Persistent volume size for SQLite database"
+    }
   },
   secretsSchema: {},
   valuesTemplate: `image:
@@ -390,7 +373,7 @@ ingress:
     enabled: true,
     hostnameTemplate: "status-{tenant}.{domain}",
     port: 3001,
-    path: "/",
+    path: "/"
   },
   resourceDefaults: { cpu: "25m", memory: "64Mi" },
   resourceLimits: { cpu: "150m", memory: "200Mi" },
@@ -398,15 +381,15 @@ ingress:
     type: "http",
     port: 3001,
     path: "/",
-    intervalSeconds: 15,
+    intervalSeconds: 15
   },
   aiHints: {
     summary:
       "Uptime Kuma is a self-hosted uptime monitoring tool with a status page",
     whenToSuggest:
       "User needs uptime monitoring, health checks, status page, alerting for downtime, or wants to monitor services and endpoints",
-    pairsWellWith: ["postgresql", "n8n"],
-  },
+    pairsWellWith: ["postgresql", "n8n"]
+  }
 };
 
 // ─── MinIO ───────────────────────────────────────────────
@@ -427,26 +410,26 @@ const minio: RecipeCreateInput = {
       type: "string",
       default: "10Gi",
       label: "Storage Size",
-      description: "Persistent volume size for object storage",
+      description: "Persistent volume size for object storage"
     },
     default_buckets: {
       type: "string",
       default: "data",
       label: "Default Buckets",
-      description: "Comma-separated list of buckets to create on startup",
-    },
+      description: "Comma-separated list of buckets to create on startup"
+    }
   },
   secretsSchema: {
     root_user: {
       description: "MinIO root/admin username",
       generate: true,
-      length: 12,
+      length: 12
     },
     root_password: {
       description: "MinIO root/admin password",
       generate: true,
-      length: 24,
-    },
+      length: 24
+    }
   },
   valuesTemplate: `mode: standalone
 
@@ -490,7 +473,7 @@ apiIngress:
     enabled: true,
     hostnameTemplate: "minio-{tenant}.{domain}",
     port: 9001,
-    path: "/",
+    path: "/"
   },
   resourceDefaults: { cpu: "50m", memory: "128Mi" },
   resourceLimits: { cpu: "500m", memory: "512Mi" },
@@ -498,15 +481,14 @@ apiIngress:
     type: "http",
     port: 9000,
     path: "/minio/health/live",
-    intervalSeconds: 15,
+    intervalSeconds: 15
   },
   aiHints: {
-    summary:
-      "MinIO is a high-performance S3-compatible object storage system",
+    summary: "MinIO is a high-performance S3-compatible object storage system",
     whenToSuggest:
       "User needs file storage, object storage, S3-compatible storage, backup storage, media storage, or artifact storage",
-    pairsWellWith: ["postgresql", "n8n"],
-  },
+    pairsWellWith: ["postgresql", "n8n"]
+  }
 };
 
 // ─── Export all seed recipes ─────────────────────────────
@@ -516,5 +498,5 @@ export const seedRecipes: RecipeCreateInput[] = [
   redis,
   n8n,
   uptimeKuma,
-  minio,
+  minio
 ];

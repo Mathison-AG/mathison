@@ -11,7 +11,7 @@ import { ToolInvocationCard } from "./tool-invocation";
 // ─── Message list ────────────────────────────────────────
 
 export function ChatMessages() {
-  const { messages, status } = useChatContext();
+  const { messages, status, addToolApprovalResponse } = useChatContext();
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +36,7 @@ export function ChatMessages() {
                   isLoading &&
                   message.id === messages[messages.length - 1]?.id
                 }
+                onToolApprovalResponse={addToolApprovalResponse}
               />
             )}
           </div>
@@ -91,9 +92,18 @@ function UserMessage({ parts }: MessagePartProps) {
 
 interface AssistantMessageProps extends MessagePartProps {
   isStreaming?: boolean;
+  onToolApprovalResponse?: (params: {
+    id: string;
+    approved: boolean;
+    reason?: string;
+  }) => void | PromiseLike<void>;
 }
 
-function AssistantMessage({ parts, isStreaming }: AssistantMessageProps) {
+function AssistantMessage({
+  parts,
+  isStreaming,
+  onToolApprovalResponse,
+}: AssistantMessageProps) {
   if (parts.length === 0) return null;
 
   return (
@@ -145,6 +155,12 @@ function AssistantMessage({ parts, isStreaming }: AssistantMessageProps) {
                 input={part.input}
                 output={part.output}
                 errorText={part.errorText as string | undefined}
+                approval={
+                  part.approval as
+                    | { id: string }
+                    | undefined
+                }
+                onToolApprovalResponse={onToolApprovalResponse}
               />
             );
           }

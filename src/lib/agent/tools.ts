@@ -365,21 +365,17 @@ export function getTools(tenantId: string) {
 
     removeService: tool({
       description:
-        "Remove a deployed service. IMPORTANT: Always ask the user for confirmation before calling this tool. Never call this without explicit user confirmation.",
+        "Remove a deployed service from the user's workspace. The user will be shown a confirmation dialog in the UI before the removal proceeds. Call this when the user wants to delete or remove a service.",
       inputSchema: z.object({
         deploymentId: z.string().describe("The deployment ID to remove"),
-        confirmed: z
-          .boolean()
-          .describe("Must be true — confirm the user has agreed to removal")
+        serviceName: z
+          .string()
+          .describe(
+            "The human-readable name of the service being removed (shown in the confirmation dialog)"
+          )
       }),
-      execute: async ({ deploymentId, confirmed }) => {
-        if (!confirmed) {
-          return {
-            error:
-              "User must confirm removal first. Please ask the user to confirm before removing."
-          };
-        }
-
+      needsApproval: true,
+      execute: async ({ deploymentId }) => {
         try {
           const result = await initiateRemoval({
             tenantId,

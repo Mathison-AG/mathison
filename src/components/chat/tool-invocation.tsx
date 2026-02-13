@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,11 +12,14 @@ import {
   Search,
   Server,
   Settings,
+  ShieldAlert,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────
@@ -27,6 +31,12 @@ interface ToolPartProps {
   input?: unknown;
   output?: unknown;
   errorText?: string;
+  approval?: { id: string };
+  onToolApprovalResponse?: (params: {
+    id: string;
+    approved: boolean;
+    reason?: string;
+  }) => void | PromiseLike<void>;
 }
 
 // ─── Status badge helpers ────────────────────────────────
@@ -123,13 +133,29 @@ export function ToolInvocationCard({
   type,
   toolName,
   state,
+  input,
   output,
   errorText,
+  approval,
+  onToolApprovalResponse,
 }: ToolPartProps) {
   // Extract the tool name from the part type (e.g. "tool-searchCatalog" → "searchCatalog")
   const name = toolName || type.replace(/^tool-/, "");
   const meta = getToolMeta(name);
   const Icon = meta.icon;
+
+  // Approval-requested state — show confirmation UI
+  if (state === "approval-requested" && approval && onToolApprovalResponse) {
+    return (
+      <ToolApprovalCard
+        toolName={name}
+        meta={meta}
+        input={input}
+        approvalId={approval.id}
+        onApprovalResponse={onToolApprovalResponse}
+      />
+    );
+  }
 
   // Pending state
   if (state === "input-streaming" || state === "input-available") {
@@ -138,6 +164,18 @@ export function ToolInvocationCard({
         <div className="flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin text-muted-foreground" />
           <span className="font-medium">{meta.pendingLabel}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Approval denied state
+  if (state === "approval-denied") {
+    return (
+      <div className="my-2 rounded-lg border border-muted bg-muted/30 p-3">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <X className="size-4" />
+          <span className="font-medium">{meta.label} — cancelled</span>
         </div>
       </div>
     );
@@ -175,6 +213,99 @@ export function ToolInvocationCard({
   }
 
   return null;
+}
+
+// ─── Tool approval card ─────────────────────────────────
+
+interface ToolApprovalCardProps {
+  toolName: string;
+  meta: { label: string; icon: React.ElementType; pendingLabel: string };
+  input: unknown;
+  approvalId: string;
+  onApprovalResponse: (params: {
+    id: string;
+    approved: boolean;
+    reason?: string;
+  }) => void | PromiseLike<void>;
+}
+
+function ToolApprovalCard({
+  toolName,
+  input,
+  approvalId,
+  onApprovalResponse,
+}: ToolApprovalCardProps) {
+  const [responded, setResponded] = useState(false);
+
+  function handleApprove() {
+    setResponded(true);
+    onApprovalResponse({ id: approvalId, approved: true });
+  }
+
+  function handleDeny() {
+    setResponded(true);
+    onApprovalResponse({
+      id: approvalId,
+      approved: false,
+      reason: "User cancelled the removal",
+    });
+  }
+
+  // Build a user-friendly description based on the tool
+  const description = getApprovalDescription(toolName, input);
+
+  if (responded) {
+    return (
+      <div className="my-2 rounded-lg border bg-card p-3">
+        <div className="flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          <span className="font-medium">Processing...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+        <ShieldAlert className="size-4" />
+        <span>Confirmation Required</span>
+      </div>
+      <p className="mt-2 text-sm text-foreground">{description}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        This action cannot be undone. All data associated with this service will
+        be permanently deleted.
+      </p>
+      <div className="mt-3 flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="destructive"
+          className="h-8 text-xs"
+          onClick={handleApprove}
+        >
+          <Trash2 className="mr-1.5 size-3" />
+          Confirm Delete
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 text-xs"
+          onClick={handleDeny}
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function getApprovalDescription(toolName: string, input: unknown): string {
+  if (toolName === "removeService") {
+    const data = input as { serviceName?: string; deploymentId?: string };
+    const name = data.serviceName || "this service";
+    return `Are you sure you want to remove ${name}?`;
+  }
+  return "Do you want to proceed with this action?";
 }
 
 // ─── Tool-specific result renderers ──────────────────────

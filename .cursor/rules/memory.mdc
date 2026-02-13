@@ -148,7 +148,46 @@ Persistent scratchpad for things learned during development. Read this every ses
 - `@ai-sdk/react@3.0.88` — React hooks for AI SDK v6 (useChat, etc.)
 - `react-markdown@10.1.0` — Markdown rendering in chat messages
 
+## Canvas Patterns (Step 10)
+
+- **React Flow v12**: Import from `@xyflow/react` (NOT `reactflow`). CSS: `import "@xyflow/react/dist/style.css"`.
+- **`useNodesState`/`useEdgesState` typing**: Must provide explicit type parameters — `useNodesState<Node>([])` — otherwise the setter type is `Dispatch<SetStateAction<never[]>>` which doesn't accept `Node[]`.
+- **dagre auto-layout**: `dagre.graphlib.Graph()` + `setGraph({ rankdir: "TB" })`. Returns node positions centered — subtract half width/height to get top-left position for React Flow.
+- **Custom node pattern**: Export as `memo()` wrapper. `NodeProps` has `data` typed as `Record<string, unknown>` — cast to your custom interface inside the component.
+- **React Flow dark mode**: Use `colorMode` prop with `resolvedTheme` from `next-themes`. Accepts `"dark" | "light" | "system"`.
+- **Handle styling**: Use `!` prefix for Tailwind classes on Handle elements to override React Flow defaults (e.g., `!bg-muted-foreground !w-2 !h-2 !border-0`).
+- **Smart polling**: TanStack Query `refetchInterval` can return `false` to disable. Check transitional states (PENDING, DEPLOYING, DELETING) to enable 5s polling.
+- **Stack API**: Returns `{ nodes, edges }` — nodes have `type: "service"`, edges have `type: "dependency"`.
+
+## Package Notes (updated)
+
+- `@xyflow/react@12.10.0` — React Flow v12
+- `dagre@0.8.5` — Directed graph auto-layout
+- `@types/dagre@0.7.53` — TypeScript types for dagre
+
+## Catalog & Deployments UI Patterns (Step 11)
+
+- **Chat event emitter**: `chatEvents.openWithMessage(msg)` from `@/lib/events` — fires an event that ChatPanelInner listens to. Opens the sheet and sends the message after 100ms delay.
+- **Recipe detail Deploy button**: Uses AI-first approach — opens chat with "Deploy {name}" rather than a separate deploy form. This leverages the existing AI agent for deployment orchestration.
+- **Deployment API routes**: All tenant-scoped via `session.user.tenantId`. DELETE route uses `initiateRemoval` from engine which checks for dependents.
+- **Logs API**: Returns early with friendly message for PENDING deployments. Catches K8s errors gracefully — never returns 500, always returns `{ logs: string }`.
+- **Log viewer**: 10s polling via TanStack Query `refetchInterval`, auto-scroll with ref, line count selector (50/100/500).
+- **AlertDialog for Remove**: Requires confirmation. Shows dependent services error from engine. Invalidates both `["deployments"]` and `["stack"]` queries on success, then redirects to `/deployments`.
+- **Category filter chips**: Hardcoded list matching seed recipe categories. `"all"` filter maps to no category param.
+- **Debounced search**: 300ms debounce on search input using `setTimeout` in `useEffect`.
+- **Tier badge pattern**: `defaultTier` const extracted outside the record to avoid TS indexing issues with `Record<string, T>` fallback.
+
+## E2E Testing Session (2026-02-13)
+
+- **Worker bootstrap fix**: Static ES imports hoist above `dotenv.config()`, so `db.ts` creates pg.Pool before env vars are set. Fixed by splitting worker into `index.ts` (loads env, dynamically imports main) and `main.ts` (all the actual worker logic). Critical pattern for any code that runs outside Next.js.
+- **Card navigation fix**: DeploymentCard had nested `<a>` tags (Link + external URL anchor = invalid HTML). Fixed by replacing inner `<a>` with `<span>` + `onClick` that opens `window.open()`. RecipeCard's Link needed `className="block"` for full clickable area.
+- **Bitnami image tags**: Chart versions get outdated fast — Bitnami removes old Docker image tags. Set `chartVersion = NULL` for seed recipes to always use latest. For kind testing, pre-load images with `kind load docker-image`.
+- **Redis/PostgreSQL values templates**: Removed `image.tag: "{{config.version}}"` from both — let the chart use its own default tag. Bare major version tags (`7`, `16`) don't exist on Docker Hub for Bitnami images.
+- **Kind image loading**: `kind load docker-image bitnami/redis:latest --name mathison-dev` — essential for testing because kind clusters have limited Docker Hub access.
+
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required
 - `ollama-ai-provider` — check for a v2 release supporting LanguageModelV3
+- PostgreSQL and MinIO chart versions also need NULL/latest treatment (currently untested)
+- Update all seed recipe chart versions to use latest (NULL) and fix remaining values templates if needed

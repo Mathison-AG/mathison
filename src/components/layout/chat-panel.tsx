@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bot, MessageCircle, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,13 @@ import {
   Sheet,
   SheetContent,
   SheetHeader,
-  SheetTitle,
+  SheetTitle
 } from "@/components/ui/sheet";
 
 import { ChatProvider, useChatContext } from "@/components/chat/chat-provider";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import { ChatInput, SuggestedPrompts } from "@/components/chat/chat-input";
+import { chatEvents } from "@/lib/events";
 
 // ─── Outer wrapper with provider ─────────────────────────
 
@@ -32,6 +33,17 @@ function ChatPanelInner() {
   const { messages, sendMessage } = useChatContext();
 
   const isEmpty = messages.length === 0;
+
+  // Listen for "open chat with message" events from other components
+  useEffect(() => {
+    return chatEvents.onOpenWithMessage((message) => {
+      setOpen(true);
+      // Small delay to ensure sheet is open before sending
+      setTimeout(() => {
+        sendMessage({ text: message });
+      }, 100);
+    });
+  }, [sendMessage]);
 
   function handleSuggestion(text: string) {
     sendMessage({ text });

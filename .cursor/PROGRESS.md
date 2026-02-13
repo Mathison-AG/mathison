@@ -4,30 +4,30 @@
 
 ## Current State
 
-- **Current step**: 10 — Canvas (React Flow) (not started)
+- **Current step**: ALL 11 STEPS COMPLETE — MVP feature-complete, E2E tested
 - **App directory**: workspace root (not inside `mathison/`)
 - **Dev server**: running on port 3000
 - **Docker services**: running (postgres on 5433, redis on 6379)
 - **K8s cluster**: kind `mathison-dev` running (K8s v1.35.0)
-- **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 test deployment (postgresql PENDING)
+- **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 RUNNING Redis deployment
 - **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
-- **Last session**: Step 09 completed — Full chat panel UI with streaming, markdown rendering, tool invocation cards, suggested prompts, auto-scroll, stop button. Updated chat API route to convert UIMessage[] to ModelMessage[] for AI SDK v6 compatibility.
+- **Last session**: E2E testing session — fixed worker bootstrap (env loading), fixed card navigation bugs, fixed Bitnami image tag issues, verified full deploy pipeline: chat → AI agent → BullMQ → worker → Helm → K8s → RUNNING. Complete TESTING.md written.
 
 ## Step Completion
 
-| Step | Name                              | Status       | Notes                                                                                           |
-| ---- | --------------------------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| 01   | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn                                          |
-| 02   | Database Schema & Prisma          | **Complete** | All models, enums, pgvector, migration applied, seed stub ready                                 |
-| 03   | Authentication (Auth.js v5)       | **Complete** | Credentials provider, JWT sessions, split config for Edge middleware, signup creates tenant     |
-| 04   | Service Catalog Backend           | **Complete** | 5 recipes seeded, CRUD API, semantic search (needs OPENAI_API_KEY), public catalog routes       |
-| 05   | AI Agent Core                     | **Complete** | LLM provider factory, system prompt, 10 tools, streaming chat, multi-step tool calling verified |
-| 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace. |
-| 07   | Deployment Engine & BullMQ Worker | **Complete** | BullMQ queues, deployer engine, worker, secrets, templates, deps. execa→child_process migration |
-| 08   | Frontend Shell & Layout           | **Complete** | Dashboard layout, sidebar, header, chat FAB, providers, dark mode, placeholder pages            |
-| 09   | Chat Panel UI                     | **Complete** | Chat provider, messages, tool cards, input, suggested prompts, streaming, markdown              |
-| 10   | Canvas (React Flow)               | Not started  |                                                                                                 |
-| 11   | Catalog & Deployments UI          | Not started  |                                                                                                 |
+| Step | Name                              | Status       | Notes                                                                                                      |
+| ---- | --------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
+| 01   | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn                                                     |
+| 02   | Database Schema & Prisma          | **Complete** | All models, enums, pgvector, migration applied, seed stub ready                                            |
+| 03   | Authentication (Auth.js v5)       | **Complete** | Credentials provider, JWT sessions, split config for Edge middleware, signup creates tenant                |
+| 04   | Service Catalog Backend           | **Complete** | 5 recipes seeded, CRUD API, semantic search (needs OPENAI_API_KEY), public catalog routes                  |
+| 05   | AI Agent Core                     | **Complete** | LLM provider factory, system prompt, 10 tools, streaming chat, multi-step tool calling verified            |
+| 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace.            |
+| 07   | Deployment Engine & BullMQ Worker | **Complete** | BullMQ queues, deployer engine, worker, secrets, templates, deps. execa→child_process migration            |
+| 08   | Frontend Shell & Layout           | **Complete** | Dashboard layout, sidebar, header, chat FAB, providers, dark mode, placeholder pages                       |
+| 09   | Chat Panel UI                     | **Complete** | Chat provider, messages, tool cards, input, suggested prompts, streaming, markdown                         |
+| 10   | Canvas (React Flow)               | **Complete** | React Flow canvas, dagre auto-layout, service nodes, dependency edges, status badges, icons, smart polling |
+| 11   | Catalog & Deployments UI          | **Complete** | Catalog grid+search+filters, recipe detail, deploy→chat, deployments list+filters, detail+logs+remove      |
 
 ## Environment
 
@@ -52,81 +52,97 @@
 
 Record every architectural decision here. Future sessions depend on this.
 
-| #   | Decision                                                                  | Made in  | Affects                    | Rationale                                                                                       |
-| --- | ------------------------------------------------------------------------- | -------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| D1  | LLM provider: Anthropic (Claude)                                          | Planning | Step 05, config            | User preference                                                                                 |
-| D2  | K8s testing: local `kind` cluster                                         | Planning | Steps 06-07, CI            | Disposable, automatable, no shared infra risk                                                   |
-| D3  | Task order: backend first (01-07), then frontend (08-11)                  | Planning | All                        | Dependencies flow top-down                                                                      |
-| D4  | Reference real Helm values from k8s repo for seed recipes                 | Planning | Step 04                    | Battle-tested configs, realistic defaults                                                       |
-| D5  | Package manager: yarn (not npm)                                           | Step 01  | All                        | User preference                                                                                 |
-| D6  | Prisma 7 with adapter pattern                                             | Step 01  | Steps 02-07                | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
-| D7  | Prisma client output: `src/generated/prisma`                              | Step 01  | All imports                | Prisma 7 requires explicit output; import from `@/generated/prisma/client`                      |
-| D8  | Postgres port: 5433                                                       | Step 01  | .env.local, docker-compose | Avoid conflict with existing postgres on 5432                                                   |
-| D9  | App lives at workspace root, not inside `mathison/`                       | Step 01  | All                        | `mathison/` only has stale `.next` artifacts                                                    |
-| D10 | pgvector 0.8.1 with 1536-dim embedding columns                            | Step 02  | Steps 04-05                | Matches text-embedding-3-small output                                                           |
-| D11 | Migration name: `init` (timestamp: 20260213162759)                        | Step 02  | Future migrations          | First migration creates all base tables                                                         |
-| D12 | Split auth config: `auth.config.ts` (Edge-safe) + `auth.ts` (full)        | Step 03  | Middleware, all auth       | Middleware runs in Edge runtime, can't import Prisma/pg                                         |
-| D13 | No `@auth/prisma-adapter` — custom authorize + JWT only                   | Step 03  | Session handling           | User model has custom fields, no Account/Session tables needed for credentials-only auth        |
-| D14 | bcryptjs (pure JS) for password hashing, 12 salt rounds                   | Step 03  | Security                   | No native addon build issues                                                                    |
-| D15 | Catalog API routes are public (middleware allows `/api/catalog/*`)        | Step 04  | Steps 05, 08-11            | Read endpoints public, writes check auth in route handler                                       |
-| D16 | Seed recipes without embeddings when OPENAI_API_KEY missing               | Step 04  | Step 05                    | Seed is safe to run without API key; re-run with key to add embeddings                          |
-| D17 | Embedding model: `text-embedding-3-small` via `@ai-sdk/openai`            | Step 04  | Step 05                    | 1536d vectors, requires OPENAI_API_KEY in .env.local                                            |
-| D18 | AI SDK v6 uses `inputSchema` not `parameters` for tools                   | Step 05  | All agent code             | Breaking change from AI SDK v5                                                                  |
-| D19 | AI SDK v6 uses `toUIMessageStreamResponse()` not `toDataStreamResponse()` | Step 05  | Steps 08-09                | Frontend `useChat` needs UI message stream protocol                                             |
-| D20 | AI SDK v6 uses `stopWhen: stepCountIs(10)` not `maxSteps: 10`             | Step 05  | Chat route                 | Multi-step tool calling control                                                                 |
-| D21 | Ollama provider returns LanguageModelV1 — needs cast for AI SDK v6        | Step 05  | Provider factory           | `ollama-ai-provider` not yet updated for V3                                                     |
-| D22 | K8s/Helm tool stubs return placeholder data — wired in Steps 06-07        | Step 05  | Steps 06-07                | DB operations fully functional, cluster ops stubbed                                             |
-| D23 | Test user: admin@mathison.dev / admin1234, workspace: mathison-dev        | Step 05  | Testing                    | Created via signup endpoint                                                                     |
-| D24 | K8s client uses `loadFromDefault()` first, fallback to `loadFromCluster()` | Step 06  | All cluster ops            | Works with kind, minikube, EKS, GKE — auto-detects context                                     |
-| D25 | `@kubernetes/client-node` v1.4.0 uses `_from` not `from` in NetworkPolicy | Step 06  | Network policies           | `from` is a JS reserved word, K8s client maps it to `_from`                                     |
-| D26 | Helm CLI wrapper uses `yaml` package for serializing values to temp files  | Step 06  | Step 07                    | Values written to tmpdir, cleaned up in `finally` block                                         |
-| D27 | Signup now provisions K8s namespace (non-blocking, fire-and-forget)        | Step 06  | Steps 07-11                | Namespace + quota + network policy created on signup                                            |
-| D28 | `generateSecret()` upgraded to `crypto.randomBytes()` for strong secrets  | Step 06  | Deployment secrets          | Replaces Math.random-based generator from Step 05                                               |
-| D29 | `enqueueDeployJob()` stub remains — wired in Step 07 with BullMQ          | Step 06  | Step 07                    | Only K8s read ops wired in Step 06, deploy queue deferred                                       |
-| D30 | Replaced `execa` with `child_process.execFile` in Helm wrapper            | Step 07  | All cluster ops            | execa v9 ESM-only breaks tsx worker; child_process is native and works everywhere               |
-| D31 | Removed top-level `ioredis` dep — BullMQ connection uses plain options    | Step 07  | Queue/worker               | Avoids ioredis version conflict between top-level and bullmq's bundled copy                    |
-| D32 | BullMQ queue name: `"deployments"` — job names: deploy, undeploy, upgrade | Step 07  | Steps 05, 09               | Agent tools enqueue via `deploymentQueue.add()`                                                 |
-| D33 | Worker runs via `tsx watch worker/index.ts` — loads .env.local via dotenv | Step 07  | Development                | Separate process, not inside Next.js — needs explicit dotenv loading                            |
-| D34 | Deployer engine: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` | Step 07 | Step 05 tools        | Agent tools call engine functions instead of inline logic                                        |
-| D35 | Values templates rendered with Handlebars (noEscape for YAML safety)      | Step 07  | Step 04 templates          | Config defaults merged with user config before rendering                                         |
-| D36 | Font: Inter (replaced Geist) — CSS var `--font-sans`                      | Step 08  | All UI                     | Cleaner readability for dashboard-style app                                                     |
-| D37 | Providers: ThemeProvider > QueryClientProvider > TooltipProvider           | Step 08  | Steps 09-11                | All client-side providers in `src/components/providers.tsx`                                      |
-| D38 | Dashboard layout: `(dashboard)` route group, no root `page.tsx`           | Step 08  | Steps 09-11                | Middleware handles auth redirect, route group maps to `/`                                       |
-| D39 | Sidebar collapse state in `DashboardShell`, `hidden lg:flex` for desktop  | Step 08  | Steps 09-11                | Mobile uses Sheet from left side                                                                 |
-| D40 | Chat panel: standalone FAB + Sheet component, state self-contained        | Step 08  | Step 09                    | Step 09 replaces placeholder content with real chat UI                                          |
-| D41 | Theme hydration: `useSyncExternalStore` for mounted detection             | Step 08  | UI patterns                | Avoids react-hooks/set-state-in-effect lint error with `useState`+`useEffect`                   |
-| D42 | Cloud-first rebrand: hide K8s terminology from all user-facing text       | Post-08  | All UI, system prompt, tools | Users deploy "services" not "Helm charts". Internal code unchanged.                             |
-| D43 | AI SDK v6 `useChat` sends UIMessage[], route converts via `convertToModelMessages` | Step 09 | Chat API route           | `DefaultChatTransport` sends UIMessage[] format; server must convert before `streamText`         |
-| D44 | `@ai-sdk/react` v3 for `useChat` hook — manual input state management    | Step 09  | Chat UI                      | v6 `useChat` returns `sendMessage`/`status`/`stop`, not `handleSubmit`/`isLoading`              |
-| D45 | Tool parts use `type: 'tool-{name}'` with states: `input-available`, `output-available`, `output-error` | Step 09 | Chat UI | Replaces v5 `toolInvocations` with `call`/`result` states                                        |
-| D46 | ChatProvider wraps useChat + invalidates `["deployments"]` + `["stack"]` on finish | Step 09 | Steps 10-11          | Chat provider is self-contained inside ChatPanel component                                       |
+| #   | Decision                                                                                                | Made in  | Affects                      | Rationale                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------- | -------- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| D1  | LLM provider: Anthropic (Claude)                                                                        | Planning | Step 05, config              | User preference                                                                                 |
+| D2  | K8s testing: local `kind` cluster                                                                       | Planning | Steps 06-07, CI              | Disposable, automatable, no shared infra risk                                                   |
+| D3  | Task order: backend first (01-07), then frontend (08-11)                                                | Planning | All                          | Dependencies flow top-down                                                                      |
+| D4  | Reference real Helm values from k8s repo for seed recipes                                               | Planning | Step 04                      | Battle-tested configs, realistic defaults                                                       |
+| D5  | Package manager: yarn (not npm)                                                                         | Step 01  | All                          | User preference                                                                                 |
+| D6  | Prisma 7 with adapter pattern                                                                           | Step 01  | Steps 02-07                  | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
+| D7  | Prisma client output: `src/generated/prisma`                                                            | Step 01  | All imports                  | Prisma 7 requires explicit output; import from `@/generated/prisma/client`                      |
+| D8  | Postgres port: 5433                                                                                     | Step 01  | .env.local, docker-compose   | Avoid conflict with existing postgres on 5432                                                   |
+| D9  | App lives at workspace root, not inside `mathison/`                                                     | Step 01  | All                          | `mathison/` only has stale `.next` artifacts                                                    |
+| D10 | pgvector 0.8.1 with 1536-dim embedding columns                                                          | Step 02  | Steps 04-05                  | Matches text-embedding-3-small output                                                           |
+| D11 | Migration name: `init` (timestamp: 20260213162759)                                                      | Step 02  | Future migrations            | First migration creates all base tables                                                         |
+| D12 | Split auth config: `auth.config.ts` (Edge-safe) + `auth.ts` (full)                                      | Step 03  | Middleware, all auth         | Middleware runs in Edge runtime, can't import Prisma/pg                                         |
+| D13 | No `@auth/prisma-adapter` — custom authorize + JWT only                                                 | Step 03  | Session handling             | User model has custom fields, no Account/Session tables needed for credentials-only auth        |
+| D14 | bcryptjs (pure JS) for password hashing, 12 salt rounds                                                 | Step 03  | Security                     | No native addon build issues                                                                    |
+| D15 | Catalog API routes are public (middleware allows `/api/catalog/*`)                                      | Step 04  | Steps 05, 08-11              | Read endpoints public, writes check auth in route handler                                       |
+| D16 | Seed recipes without embeddings when OPENAI_API_KEY missing                                             | Step 04  | Step 05                      | Seed is safe to run without API key; re-run with key to add embeddings                          |
+| D17 | Embedding model: `text-embedding-3-small` via `@ai-sdk/openai`                                          | Step 04  | Step 05                      | 1536d vectors, requires OPENAI_API_KEY in .env.local                                            |
+| D18 | AI SDK v6 uses `inputSchema` not `parameters` for tools                                                 | Step 05  | All agent code               | Breaking change from AI SDK v5                                                                  |
+| D19 | AI SDK v6 uses `toUIMessageStreamResponse()` not `toDataStreamResponse()`                               | Step 05  | Steps 08-09                  | Frontend `useChat` needs UI message stream protocol                                             |
+| D20 | AI SDK v6 uses `stopWhen: stepCountIs(10)` not `maxSteps: 10`                                           | Step 05  | Chat route                   | Multi-step tool calling control                                                                 |
+| D21 | Ollama provider returns LanguageModelV1 — needs cast for AI SDK v6                                      | Step 05  | Provider factory             | `ollama-ai-provider` not yet updated for V3                                                     |
+| D22 | K8s/Helm tool stubs return placeholder data — wired in Steps 06-07                                      | Step 05  | Steps 06-07                  | DB operations fully functional, cluster ops stubbed                                             |
+| D23 | Test user: admin@mathison.dev / admin1234, workspace: mathison-dev                                      | Step 05  | Testing                      | Created via signup endpoint                                                                     |
+| D24 | K8s client uses `loadFromDefault()` first, fallback to `loadFromCluster()`                              | Step 06  | All cluster ops              | Works with kind, minikube, EKS, GKE — auto-detects context                                      |
+| D25 | `@kubernetes/client-node` v1.4.0 uses `_from` not `from` in NetworkPolicy                               | Step 06  | Network policies             | `from` is a JS reserved word, K8s client maps it to `_from`                                     |
+| D26 | Helm CLI wrapper uses `yaml` package for serializing values to temp files                               | Step 06  | Step 07                      | Values written to tmpdir, cleaned up in `finally` block                                         |
+| D27 | Signup now provisions K8s namespace (non-blocking, fire-and-forget)                                     | Step 06  | Steps 07-11                  | Namespace + quota + network policy created on signup                                            |
+| D28 | `generateSecret()` upgraded to `crypto.randomBytes()` for strong secrets                                | Step 06  | Deployment secrets           | Replaces Math.random-based generator from Step 05                                               |
+| D29 | `enqueueDeployJob()` stub remains — wired in Step 07 with BullMQ                                        | Step 06  | Step 07                      | Only K8s read ops wired in Step 06, deploy queue deferred                                       |
+| D30 | Replaced `execa` with `child_process.execFile` in Helm wrapper                                          | Step 07  | All cluster ops              | execa v9 ESM-only breaks tsx worker; child_process is native and works everywhere               |
+| D31 | Removed top-level `ioredis` dep — BullMQ connection uses plain options                                  | Step 07  | Queue/worker                 | Avoids ioredis version conflict between top-level and bullmq's bundled copy                     |
+| D32 | BullMQ queue name: `"deployments"` — job names: deploy, undeploy, upgrade                               | Step 07  | Steps 05, 09                 | Agent tools enqueue via `deploymentQueue.add()`                                                 |
+| D33 | Worker runs via `tsx watch worker/index.ts` — loads .env.local via dotenv                               | Step 07  | Development                  | Separate process, not inside Next.js — needs explicit dotenv loading                            |
+| D34 | Deployer engine: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`                       | Step 07  | Step 05 tools                | Agent tools call engine functions instead of inline logic                                       |
+| D35 | Values templates rendered with Handlebars (noEscape for YAML safety)                                    | Step 07  | Step 04 templates            | Config defaults merged with user config before rendering                                        |
+| D36 | Font: Inter (replaced Geist) — CSS var `--font-sans`                                                    | Step 08  | All UI                       | Cleaner readability for dashboard-style app                                                     |
+| D37 | Providers: ThemeProvider > QueryClientProvider > TooltipProvider                                        | Step 08  | Steps 09-11                  | All client-side providers in `src/components/providers.tsx`                                     |
+| D38 | Dashboard layout: `(dashboard)` route group, no root `page.tsx`                                         | Step 08  | Steps 09-11                  | Middleware handles auth redirect, route group maps to `/`                                       |
+| D39 | Sidebar collapse state in `DashboardShell`, `hidden lg:flex` for desktop                                | Step 08  | Steps 09-11                  | Mobile uses Sheet from left side                                                                |
+| D40 | Chat panel: standalone FAB + Sheet component, state self-contained                                      | Step 08  | Step 09                      | Step 09 replaces placeholder content with real chat UI                                          |
+| D41 | Theme hydration: `useSyncExternalStore` for mounted detection                                           | Step 08  | UI patterns                  | Avoids react-hooks/set-state-in-effect lint error with `useState`+`useEffect`                   |
+| D42 | Cloud-first rebrand: hide K8s terminology from all user-facing text                                     | Post-08  | All UI, system prompt, tools | Users deploy "services" not "Helm charts". Internal code unchanged.                             |
+| D43 | AI SDK v6 `useChat` sends UIMessage[], route converts via `convertToModelMessages`                      | Step 09  | Chat API route               | `DefaultChatTransport` sends UIMessage[] format; server must convert before `streamText`        |
+| D44 | `@ai-sdk/react` v3 for `useChat` hook — manual input state management                                   | Step 09  | Chat UI                      | v6 `useChat` returns `sendMessage`/`status`/`stop`, not `handleSubmit`/`isLoading`              |
+| D45 | Tool parts use `type: 'tool-{name}'` with states: `input-available`, `output-available`, `output-error` | Step 09  | Chat UI                      | Replaces v5 `toolInvocations` with `call`/`result` states                                       |
+| D46 | ChatProvider wraps useChat + invalidates `["deployments"]` + `["stack"]` on finish                      | Step 09  | Steps 10-11                  | Chat provider is self-contained inside ChatPanel component                                      |
+| D47 | React Flow canvas: `@xyflow/react` v12 with dagre auto-layout                                           | Step 10  | Dashboard, Step 11           | Service nodes + dependency edges, TB (top-to-bottom) layout                                     |
+| D48 | Canvas query key: `["stack"]`, smart polling 5s during transitional states                              | Step 10  | Step 09 (invalidation)       | Only polls when PENDING/DEPLOYING/DELETING deployments exist                                    |
+| D49 | Dashboard page is now a client component (StackCanvas) — replaced server component                      | Step 10  | Step 11                      | No more server-side deployment count; all data via `/api/stack` API                             |
+| D50 | StatusBadge reusable component at `@/components/deployments/status-badge`                               | Step 10  | Step 11                      | Green for RUNNING, red for FAILED, spinner for DEPLOYING/DELETING, outline for PENDING/STOPPED  |
+| D51 | Service icons at `public/icons/{slug}.svg` for all 5 seed recipes                                       | Step 10  | Step 11, catalog             | Fallback: `/icons/${recipe.slug}.svg` when `iconUrl` is null                                    |
+| D52 | Deploy button on recipe detail opens chat via event emitter                                             | Step 11  | Chat integration             | `chatEvents.openWithMessage("Deploy PostgreSQL")` — AI-first approach, no separate deploy form  |
+| D53 | Deployment API routes: `/api/deployments`, `/api/deployments/[id]`, `/api/deployments/[id]/logs`        | Step 11  | UI data fetching             | GET list/detail, DELETE removal, GET logs — all tenant-scoped via auth session                  |
+| D54 | Log viewer uses 10s polling + manual refresh, monospace dark terminal style                             | Step 11  | UX                           | Auto-scroll, line count selector (50/100/500), graceful PENDING state handling                  |
+| D55 | Remove deployment uses AlertDialog confirmation before DELETE API call                                  | Step 11  | UX                           | Prevents accidental deletion, shows dependent services error from engine                        |
+| D56 | Worker uses bootstrap pattern: index.ts (env) → dynamic import main.ts (logic)                          | E2E test | Worker reliability           | Static ES imports hoist above dotenv.config(), breaking DB connection in worker                 |
+| D57 | Bitnami chart versions set to NULL for seed recipes (use latest)                                        | E2E test | Steps 04, 07                 | Pinned versions reference image tags that get removed from Docker Hub                           |
+| D58 | Pre-load images into kind with `kind load docker-image` for testing                                     | E2E test | Testing                      | Kind clusters have limited Docker Hub access                                                    |
 
 ## Cross-Step Dependencies
 
 Decisions in early steps that later steps MUST respect. Check this before starting any step.
 
-| Source Step | Dependency                                                              | Consumer Steps | Detail                                |
-| ----------- | ----------------------------------------------------------------------- | -------------- | ------------------------------------- |
-| 01          | Path alias `@/*` → `src/*`                                              | All            | Every import uses this                |
-| 01          | shadcn/ui component set                                                 | 08-11          | Which components are available        |
-| 01          | Prisma import path: `@/generated/prisma/client`                         | 02-07, 11      | NOT `@prisma/client`                  |
-| 01          | Prisma config in `prisma.config.ts` (not schema url)                    | 02-07          | Prisma 7 pattern                      |
-| 01          | `zod` v4 — use `zod/v4` import path                                     | All            | Zod 4 has different import pattern    |
-| 02          | Prisma field names (snake_case in DB, camelCase in TS)                  | 03-07, 11      | Query field names                     |
-| 02          | JSON field types (`configSchema`, `aiHints`, etc.)                      | 04, 05, 07     | Shape of JSON data                    |
-| 03          | Session shape: `session.user.{id, tenantId, role}`                      | 04-07, 11      | Every auth check uses this            |
-| 03          | Auth guard pattern: `const session = await auth()`                      | 04-07, 11      | Standard in all protected routes      |
-| 04          | Seed recipe slugs: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio` | 05, 10, 11     | Tool results reference these          |
-| 04          | Embedding model: `text-embedding-3-small` (1536d)                       | Schema col     | Must match vector column size         |
-| 05          | Tool names: `searchCatalog`, `deployService`, etc.                      | 09             | Chat UI renders tool-specific cards   |
-| 05          | Tool return shapes                                                      | 09             | UI must match the data structure      |
-| 06          | Helm wrapper function signatures                                        | 07             | Worker calls these directly           |
-| 06          | K8s wrapper function signatures                                         | 05, 07         | Agent tools + worker call these       |
-| 07          | BullMQ queue name: `"deployments"`                                      | 05             | Agent tools enqueue to this           |
-| 07          | Job data shapes (`DeployJobData`, etc.)                                 | 05             | Must match what tools send            |
-| 08          | ChatProvider location in component tree                                 | 09             | Chat components use context from this |
-| 08          | Sheet component for chat panel                                          | 09             | Chat content goes inside this shell   |
-| 07          | BullMQ queue name: `"deployments"`, job names from `JOB_NAMES`          | 05, 09         | Agent tools + UI reference these      |
-| 07          | Engine functions: `initiateDeployment`, `initiateUpgrade`, `initiateRemoval` | 05          | Tools import from `@/lib/deployer/engine` |
-| 07          | Worker process: `yarn worker` / `tsx watch worker/index.ts`             | Development    | Must be running for deploys to execute |
-| 10          | `useCanvasData` hook query key: `["stack"]`                             | 09             | Chat invalidates this after deploys   |
+| Source Step | Dependency                                                                   | Consumer Steps | Detail                                    |
+| ----------- | ---------------------------------------------------------------------------- | -------------- | ----------------------------------------- |
+| 01          | Path alias `@/*` → `src/*`                                                   | All            | Every import uses this                    |
+| 01          | shadcn/ui component set                                                      | 08-11          | Which components are available            |
+| 01          | Prisma import path: `@/generated/prisma/client`                              | 02-07, 11      | NOT `@prisma/client`                      |
+| 01          | Prisma config in `prisma.config.ts` (not schema url)                         | 02-07          | Prisma 7 pattern                          |
+| 01          | `zod` v4 — use `zod/v4` import path                                          | All            | Zod 4 has different import pattern        |
+| 02          | Prisma field names (snake_case in DB, camelCase in TS)                       | 03-07, 11      | Query field names                         |
+| 02          | JSON field types (`configSchema`, `aiHints`, etc.)                           | 04, 05, 07     | Shape of JSON data                        |
+| 03          | Session shape: `session.user.{id, tenantId, role}`                           | 04-07, 11      | Every auth check uses this                |
+| 03          | Auth guard pattern: `const session = await auth()`                           | 04-07, 11      | Standard in all protected routes          |
+| 04          | Seed recipe slugs: `postgresql`, `redis`, `n8n`, `uptime-kuma`, `minio`      | 05, 10, 11     | Tool results reference these              |
+| 04          | Embedding model: `text-embedding-3-small` (1536d)                            | Schema col     | Must match vector column size             |
+| 05          | Tool names: `searchCatalog`, `deployService`, etc.                           | 09             | Chat UI renders tool-specific cards       |
+| 05          | Tool return shapes                                                           | 09             | UI must match the data structure          |
+| 06          | Helm wrapper function signatures                                             | 07             | Worker calls these directly               |
+| 06          | K8s wrapper function signatures                                              | 05, 07         | Agent tools + worker call these           |
+| 07          | BullMQ queue name: `"deployments"`                                           | 05             | Agent tools enqueue to this               |
+| 07          | Job data shapes (`DeployJobData`, etc.)                                      | 05             | Must match what tools send                |
+| 08          | ChatProvider location in component tree                                      | 09             | Chat components use context from this     |
+| 08          | Sheet component for chat panel                                               | 09             | Chat content goes inside this shell       |
+| 07          | BullMQ queue name: `"deployments"`, job names from `JOB_NAMES`               | 05, 09         | Agent tools + UI reference these          |
+| 07          | Engine functions: `initiateDeployment`, `initiateUpgrade`, `initiateRemoval` | 05             | Tools import from `@/lib/deployer/engine` |
+| 07          | Worker process: `yarn worker` / `tsx watch worker/index.ts`                  | Development    | Must be running for deploys to execute    |
+| 10          | `useCanvasData` hook query key: `["stack"]`                                  | 09             | Chat invalidates this after deploys       |
+| 10          | `StatusBadge` component at `@/components/deployments/status-badge`           | 11             | Reusable for deployment list views        |
+| 10          | Service icons at `public/icons/{slug}.svg`                                   | 11             | Used in catalog cards, detail views       |
+| 11          | `chatEvents` at `@/lib/events` for cross-component communication             | Chat panel     | Opens chat with pre-filled message        |
+| 11          | Shared types at `@/types/deployment.ts` and `@/types/canvas.ts`              | Hooks, UI      | API response shapes for deployments       |

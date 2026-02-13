@@ -2,7 +2,10 @@
 
 import { createContext, useContext } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+} from "ai";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { UIMessage } from "ai";
@@ -15,6 +18,11 @@ interface ChatContextValue {
     message: { text: string } | { parts: UIMessage["parts"] },
     options?: Record<string, unknown>
   ) => Promise<void>;
+  addToolApprovalResponse: (params: {
+    id: string;
+    approved: boolean;
+    reason?: string;
+  }) => void | PromiseLike<void>;
   status: "ready" | "submitted" | "streaming" | "error";
   error: Error | undefined;
   stop: () => Promise<void>;
@@ -31,6 +39,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
 
   const chat = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
+    // Auto-continue after user responds to tool approval requests
+    sendAutomaticallyWhen:
+      lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => {
       // Invalidate deployment queries so the UI refreshes after agent actions
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
@@ -44,6 +55,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const value: ChatContextValue = {
     messages: chat.messages,
     sendMessage: chat.sendMessage as ChatContextValue["sendMessage"],
+    addToolApprovalResponse: chat.addToolApprovalResponse,
     status: chat.status,
     error: chat.error,
     stop: chat.stop,
