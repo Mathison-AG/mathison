@@ -107,6 +107,18 @@ Persistent scratchpad for things learned during development. Read this every ses
 - **execa removed**: Replaced with `child_process.execFile` (promisified) in Helm wrapper. execa v9 is ESM-only and breaks tsx CJS mode. Native child_process works everywhere.
 - **ioredis removed**: Top-level ioredis dependency removed. BullMQ uses its own bundled copy internally.
 
+## Frontend Shell Patterns (Step 08)
+
+- **Font change**: Switched from Geist to Inter. CSS variable `--font-sans` mapped in `globals.css` `@theme inline` block.
+- **Providers hierarchy**: ThemeProvider (next-themes) > QueryClientProvider (TanStack) > TooltipProvider (Radix). All in `src/components/providers.tsx` as a "use client" component.
+- **Dashboard layout**: Server component `(dashboard)/layout.tsx` fetches session + tenant name, passes as props to `DashboardShell` (client). DashboardShell manages sidebar collapse and mobile menu state.
+- **Sidebar collapse**: State lives in `DashboardShell`. Desktop sidebar is `hidden lg:flex`. Mobile uses Sheet from left side.
+- **Theme hydration**: `next-themes` causes SSR/client mismatch for theme label text. Fixed with `useSyncExternalStore(() => () => {}, () => true, () => false)` instead of `useState` + `useEffect` (linter rejects `setState` in effect).
+- **Sheet accessibility**: SheetContent without a SheetTitle triggers Radix accessibility warning. Add `<SheetTitle className="sr-only">` and `aria-describedby={undefined}` to suppress.
+- **Chat panel**: Standalone component with own Sheet state. FAB hidden when sheet is open. Placeholder input disabled for Step 09.
+- **Route group**: `(dashboard)` is the main protected route group — maps to `/`, `/catalog`, `/deployments`, `/settings`. No root `page.tsx` needed since middleware handles auth redirect and the route group's `page.tsx` matches `/`.
+- **Active nav detection**: `pathname === "/"` for dashboard, `pathname.startsWith("/catalog")` etc for others. Prevents false positives.
+
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required

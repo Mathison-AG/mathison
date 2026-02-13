@@ -4,14 +4,14 @@
 
 ## Current State
 
-- **Current step**: 08 — Frontend Shell & Layout (not started)
+- **Current step**: 09 — Chat Panel UI (not started)
 - **App directory**: workspace root (not inside `mathison/`)
 - **Dev server**: running on port 3000
 - **Docker services**: running (postgres on 5433, redis on 6379)
 - **K8s cluster**: kind `mathison-dev` running (K8s v1.35.0)
 - **Database**: migrated + seeded — 5 published recipes in catalog, pgvector active (v0.8.1), 1 test deployment (postgresql PENDING)
 - **Test user**: admin@mathison.dev / admin1234 (workspace: mathison-dev)
-- **Last session**: Step 07 completed — BullMQ deployment engine, worker process, secret generation, values template rendering, dependency resolution. Agent tools wired to real engine. Replaced execa with child_process in Helm wrapper. Removed execa and ioredis top-level deps.
+- **Last session**: Step 08 completed — Frontend shell with dashboard layout, collapsible sidebar, header with workspace badge and user menu, chat panel FAB + Sheet, placeholder pages, TanStack Query + next-themes providers, dark mode support.
 
 ## Step Completion
 
@@ -24,7 +24,7 @@
 | 05   | AI Agent Core                     | **Complete** | LLM provider factory, system prompt, 10 tools, streaming chat, multi-step tool calling verified |
 | 06   | Kubernetes & Helm Integration     | **Complete** | K8s client, Helm CLI, ingress, tenant manager, quota. Stubs wired, signup provisions namespace. |
 | 07   | Deployment Engine & BullMQ Worker | **Complete** | BullMQ queues, deployer engine, worker, secrets, templates, deps. execa→child_process migration |
-| 08   | Frontend Shell & Layout           | Not started  |                                                                                                 |
+| 08   | Frontend Shell & Layout           | **Complete** | Dashboard layout, sidebar, header, chat FAB, providers, dark mode, placeholder pages            |
 | 09   | Chat Panel UI                     | Not started  |                                                                                                 |
 | 10   | Canvas (React Flow)               | Not started  |                                                                                                 |
 | 11   | Catalog & Deployments UI          | Not started  |                                                                                                 |
@@ -89,6 +89,12 @@ Record every architectural decision here. Future sessions depend on this.
 | D33 | Worker runs via `tsx watch worker/index.ts` — loads .env.local via dotenv | Step 07  | Development                | Separate process, not inside Next.js — needs explicit dotenv loading                            |
 | D34 | Deployer engine: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` | Step 07 | Step 05 tools        | Agent tools call engine functions instead of inline logic                                        |
 | D35 | Values templates rendered with Handlebars (noEscape for YAML safety)      | Step 07  | Step 04 templates          | Config defaults merged with user config before rendering                                         |
+| D36 | Font: Inter (replaced Geist) — CSS var `--font-sans`                      | Step 08  | All UI                     | Cleaner readability for dashboard-style app                                                     |
+| D37 | Providers: ThemeProvider > QueryClientProvider > TooltipProvider           | Step 08  | Steps 09-11                | All client-side providers in `src/components/providers.tsx`                                      |
+| D38 | Dashboard layout: `(dashboard)` route group, no root `page.tsx`           | Step 08  | Steps 09-11                | Middleware handles auth redirect, route group maps to `/`                                       |
+| D39 | Sidebar collapse state in `DashboardShell`, `hidden lg:flex` for desktop  | Step 08  | Steps 09-11                | Mobile uses Sheet from left side                                                                 |
+| D40 | Chat panel: standalone FAB + Sheet component, state self-contained        | Step 08  | Step 09                    | Step 09 replaces placeholder content with real chat UI                                          |
+| D41 | Theme hydration: `useSyncExternalStore` for mounted detection             | Step 08  | UI patterns                | Avoids react-hooks/set-state-in-effect lint error with `useState`+`useEffect`                   |
 
 ## Cross-Step Dependencies
 
