@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { initiateRemoval } from "@/lib/deployer/engine";
 
 // ─── GET /api/deployments/[id] ────────────────────────────
-// Get deployment detail
+// Get deployment detail (tenant-scoped for authorization)
 
 export async function GET(
   _req: Request,

@@ -36,7 +36,8 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │       ├── auth/            # NextAuth + signup
 │   │       ├── catalog/         # Public: recipes list, detail, search
 │   │       ├── chat/            # AI agent streaming endpoint
-│   │       ├── deployments/     # CRUD + logs (tenant-scoped)
+│   │       ├── deployments/     # CRUD + logs (workspace-scoped)
+│   │       ├── workspaces/      # Workspace CRUD + switch
 │   │       └── stack/           # Canvas data (nodes + edges)
 │   │
 │   ├── components/
@@ -44,7 +45,8 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── catalog/             # Recipe cards, grid, filters, detail
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
 │   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer
-│   │   ├── layout/              # Dashboard shell, sidebar, header, chat panel
+│   │   ├── layout/              # Dashboard shell, sidebar (workspace selector), header, chat panel
+│   │   ├── settings/            # Workspace manager component
 │   │   ├── ui/                  # shadcn/ui primitives (button, card, sheet, etc.)
 │   │   └── providers.tsx        # Client providers (theme, query, tooltip)
 │   │
@@ -54,7 +56,8 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── cluster/             # K8s client, Helm CLI wrapper, ingress
 │   │   ├── deployer/            # Engine, dependency resolution, secrets, templates
 │   │   ├── queue/               # BullMQ connection, queue definitions, job types
-│   │   ├── tenant/              # Namespace provisioning, quota management
+│   │   ├── tenant/              # Tenant-level operations, quota management
+│   │   ├── workspace/           # Workspace CRUD, K8s provisioning, active context
 │   │   ├── auth.ts              # Auth.js full config (Prisma, server-side)
 │   │   ├── auth.config.ts       # Auth.js Edge config (middleware-safe)
 │   │   ├── config.ts            # Zod-validated env vars
@@ -86,12 +89,12 @@ ai-k8s/                          # Workspace root = Next.js app
 
 ### AI Agent (`src/lib/agent/`)
 - **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
-- **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology.
-- **tools.ts** — 10 tools: `searchCatalog`, `deployService`, `getDeploymentStatus`, `listDeployments`, `removeDeployment`, `getServiceLogs`, `upgradeService`, `getClusterHealth`, `listAvailableServices`, `getDeploymentDetails`. All tenant-scoped via closure.
+- **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology. Workspace-aware.
+- **tools.ts** — 13 tools. Workspace tools: `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. Deployment tools (workspace-scoped): `deployService`, `getStackStatus`, `getServiceDetail`, `getServiceLogs`, `updateService`, `removeService`. Catalog tools: `searchCatalog`, `getRecipe`, `createRecipe`, `searchHelmCharts`. Called via `getTools(tenantId, workspaceId)`.
 
 ### Deployment Engine (`src/lib/deployer/`)
-- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Handles recipe lookup, config validation, secret generation, template rendering, DB writes, and BullMQ job queuing.
-- **dependencies.ts** — `resolveDependencies()`. Auto-deploys missing dependencies with priority jobs.
+- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Deployments are workspace-scoped. Engine takes `workspaceId` for deploy, looks up workspace namespace.
+- **dependencies.ts** — `resolveDependencies()`. Auto-deploys missing dependencies within the same workspace with priority jobs.
 - **secrets.ts** — `generateSecrets()`. Uses `crypto.randomBytes()` for strong secrets.
 - **template.ts** — Handlebars rendering. Merges config defaults from recipe's configSchema.
 
@@ -121,11 +124,12 @@ ai-k8s/                          # Workspace root = Next.js app
 
 | Model | Purpose |
 |-------|---------|
-| Tenant | Multi-tenancy root. Has slug (= K8s namespace suffix) |
-| User | Auth. Belongs to Tenant. Has role (ADMIN/MEMBER) |
+| Tenant | Multi-tenancy root. Has slug. Owns workspaces. |
+| User | Auth. Belongs to Tenant. Has role (ADMIN/USER), activeWorkspaceId. |
+| Workspace | Isolated environment. Belongs to Tenant. Maps to K8s namespace (`{tenantSlug}-{workspaceSlug}`). Has quota, status (ACTIVE/DELETING/DELETED). |
 | Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate |
 | RecipeVersion | Version history for recipes |
-| Deployment | Running service instance. Belongs to Tenant + Recipe. Has status, config, helmRelease |
+| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. |
 | Stack | Groups of deployments (future use) |
 | Conversation | Chat thread. Belongs to User + Tenant |
 | Message | Chat message. Belongs to Conversation. Has role + content |
@@ -135,12 +139,15 @@ ai-k8s/                          # Workspace root = Next.js app
 | Route | Methods | Auth | Purpose |
 |-------|---------|------|---------|
 | `/api/auth/[...nextauth]` | GET, POST | Public | Auth.js handlers |
-| `/api/auth/signup` | POST | Public | Create tenant + user |
+| `/api/auth/signup` | POST | Public | Create tenant + user + default workspace |
 | `/api/catalog` | GET | Public | List recipes (with filters) |
 | `/api/catalog/[slug]` | GET | Public | Recipe detail |
 | `/api/catalog/search` | POST | Public | Semantic search (pgvector) |
-| `/api/chat` | POST | Protected | AI agent streaming |
-| `/api/deployments` | GET | Protected | List user's deployments |
+| `/api/chat` | POST | Protected | AI agent streaming (workspace-scoped) |
+| `/api/deployments` | GET | Protected | List deployments in active workspace |
 | `/api/deployments/[id]` | GET, DELETE | Protected | Deployment detail / remove |
 | `/api/deployments/[id]/logs` | GET | Protected | Pod logs |
-| `/api/stack` | GET | Protected | Canvas nodes + edges |
+| `/api/workspaces` | GET, POST | Protected | List / create workspaces |
+| `/api/workspaces/[id]` | GET, DELETE | Protected | Workspace detail / delete (+ all resources) |
+| `/api/workspaces/switch` | POST | Protected | Switch active workspace (sets cookie) |
+| `/api/stack` | GET | Protected | Canvas nodes + edges (active workspace) |

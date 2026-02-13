@@ -9,6 +9,11 @@ import {
   initiateUpgrade,
   initiateRemoval,
 } from "@/lib/deployer/engine";
+import {
+  createWorkspace,
+  listWorkspaces,
+  deleteWorkspace,
+} from "@/lib/workspace/manager";
 
 import type { ConfigSchema, AiHints, RecipeCreateInput } from "@/types/recipe";
 
@@ -52,8 +57,90 @@ async function getK8sPodLogs(
 
 // ─── Tools ──────────────────────────────────────────────
 
-export function getTools(tenantId: string) {
+export function getTools(tenantId: string, workspaceId: string) {
   return {
+    // ── Workspace tools ───────────────────────────────────
+
+    listWorkspaces: tool({
+      description:
+        "List all workspaces in the user's account. Each workspace is an isolated environment with its own services.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const workspaces = await listWorkspaces(tenantId);
+          return {
+            workspaces: workspaces.map((w) => ({
+              id: w.id,
+              name: w.name,
+              slug: w.slug,
+              status: w.status,
+              serviceCount: w.deploymentCount,
+              isActive: w.id === workspaceId,
+            })),
+            activeWorkspaceId: workspaceId,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[listWorkspaces]", { tenantId }, err);
+          return { error: message };
+        }
+      }
+    }),
+
+    createWorkspace: tool({
+      description:
+        "Create a new workspace. Workspaces are isolated environments where services are deployed.",
+      inputSchema: z.object({
+        name: z
+          .string()
+          .min(1)
+          .max(100)
+          .describe("Name for the new workspace, e.g. 'Staging' or 'Production'"),
+      }),
+      execute: async ({ name }) => {
+        try {
+          const result = await createWorkspace({
+            tenantId,
+            name,
+          });
+          return {
+            workspaceId: result.id,
+            name: result.name,
+            slug: result.slug,
+            message: `Workspace '${result.name}' created successfully. Switch to it to start deploying services.`,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[createWorkspace]", { tenantId, name }, err);
+          return { error: message };
+        }
+      }
+    }),
+
+    deleteWorkspace: tool({
+      description:
+        "Delete a workspace and all its services. This is destructive and cannot be undone. The user will be shown a confirmation dialog.",
+      inputSchema: z.object({
+        workspaceId: z.string().describe("The workspace ID to delete"),
+        workspaceName: z
+          .string()
+          .describe("The name of the workspace (shown in the confirmation dialog)"),
+      }),
+      needsApproval: true,
+      execute: async ({ workspaceId: wsId }) => {
+        try {
+          const result = await deleteWorkspace(wsId, tenantId);
+          return {
+            message: result.message,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[deleteWorkspace]", { workspaceId: wsId, tenantId }, err);
+          return { error: message };
+        }
+      }
+    }),
+
     // ── Catalog tools ─────────────────────────────────────
 
     searchCatalog: tool({
@@ -138,7 +225,7 @@ export function getTools(tenantId: string) {
 
     deployService: tool({
       description:
-        "Deploy a service from the catalog to the user's workspace. This will install the service and all its dependencies.",
+        "Deploy a service from the catalog to the user's active workspace. This will install the service and all its dependencies.",
       inputSchema: z.object({
         recipeSlug: z
           .string()
@@ -158,6 +245,7 @@ export function getTools(tenantId: string) {
         try {
           const result = await initiateDeployment({
             tenantId,
+            workspaceId,
             recipeSlug,
             name,
             config,
@@ -171,7 +259,7 @@ export function getTools(tenantId: string) {
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[deployService]", { recipeSlug, tenantId }, err);
+          console.error("[deployService]", { recipeSlug, tenantId, workspaceId }, err);
           return { error: message };
         }
       }
@@ -179,11 +267,11 @@ export function getTools(tenantId: string) {
 
     getStackStatus: tool({
       description:
-        "Get the status of all deployed services in the user's workspace.",
+        "Get the status of all deployed services in the user's active workspace.",
       inputSchema: z.object({}),
       execute: async () => {
         const deployments = await prisma.deployment.findMany({
-          where: { tenantId },
+          where: { workspaceId },
           include: {
             recipe: {
               select: { displayName: true, slug: true, category: true }
@@ -194,7 +282,7 @@ export function getTools(tenantId: string) {
 
         if (deployments.length === 0) {
           return {
-            message: "No services deployed yet.",
+            message: "No services deployed yet in this workspace.",
             services: [] as Array<{
               deploymentId: string;
               name: string;

@@ -4,6 +4,8 @@
  * When deploying a service with dependencies (e.g., n8n needs PostgreSQL),
  * this module checks for existing deployments and auto-deploys missing ones.
  * Returns connection info for template rendering.
+ *
+ * Dependencies are resolved within the same workspace (namespace).
  */
 
 import { Prisma } from "@/generated/prisma/client";
@@ -40,19 +42,20 @@ const DEFAULT_PORTS: Record<string, number> = {
 // ─── Dependency resolution ────────────────────────────────
 
 /**
- * Resolve all dependencies for a recipe.
+ * Resolve all dependencies for a recipe within a workspace.
  * For each dependency:
- *   1. Check if already deployed in this tenant
+ *   1. Check if already deployed in this workspace
  *   2. If not, auto-deploy it (create record + queue job)
  *   3. Return connection info for template rendering
  */
 export async function resolveDependencies(params: {
   tenantId: string;
-  tenantSlug: string;
-  tenantNamespace: string;
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceNamespace: string;
   recipe: Recipe;
 }): Promise<ResolvedDependencies> {
-  const { tenantId, tenantSlug, tenantNamespace, recipe } = params;
+  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, recipe } = params;
 
   if (!recipe.dependencies || recipe.dependencies.length === 0) {
     return { resolved: {}, newDeploymentIds: [] };
@@ -64,10 +67,10 @@ export async function resolveDependencies(params: {
   for (const dep of recipe.dependencies) {
     const depKey = dep.alias || dep.service;
 
-    // 1. Check if already deployed
+    // 1. Check if already deployed in this workspace
     const existing = await prisma.deployment.findUnique({
       where: {
-        tenantId_name: { tenantId, name: depKey },
+        workspaceId_name: { workspaceId, name: depKey },
       },
       select: {
         id: true,
@@ -83,7 +86,7 @@ export async function resolveDependencies(params: {
       resolved[depKey] = buildConnectionInfo(
         dep,
         existing.helmRelease,
-        tenantNamespace,
+        workspaceNamespace,
         (existing.config ?? {}) as Record<string, unknown>
       );
       continue;
@@ -99,8 +102,9 @@ export async function resolveDependencies(params: {
 
     const depResult = await deployDependency({
       tenantId,
-      tenantSlug,
-      tenantNamespace,
+      workspaceId,
+      workspaceSlug,
+      workspaceNamespace,
       dep,
       depRecipe,
     });
@@ -116,15 +120,16 @@ export async function resolveDependencies(params: {
 
 async function deployDependency(params: {
   tenantId: string;
-  tenantSlug: string;
-  tenantNamespace: string;
+  workspaceId: string;
+  workspaceSlug: string;
+  workspaceNamespace: string;
   dep: RecipeDependency;
   depRecipe: Recipe;
 }): Promise<{ deploymentId: string; connectionInfo: DependencyInfo }> {
-  const { tenantId, tenantSlug, tenantNamespace, dep, depRecipe } = params;
+  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, dep, depRecipe } = params;
 
   const depName = dep.alias || dep.service;
-  const helmRelease = `${tenantSlug}-${depName}`;
+  const helmRelease = `${workspaceSlug}-${depName}`;
   const depConfig = dep.config || {};
 
   // Generate secrets for the dependency
@@ -133,12 +138,12 @@ async function deployDependency(params: {
   // Create K8s secret if we have any
   const secretsRef =
     Object.keys(secrets).length > 0
-      ? `secret-${tenantSlug}-${depName}`
+      ? `secret-${workspaceSlug}-${depName}`
       : null;
 
   if (secretsRef && Object.keys(secrets).length > 0) {
     try {
-      await createK8sSecret(tenantNamespace, secretsRef, secrets);
+      await createK8sSecret(workspaceNamespace, secretsRef, secrets);
     } catch (err) {
       console.error(`[dependencies] Failed to create K8s secret for '${depName}':`, err);
       // Continue anyway — Helm values will have the secrets inline
@@ -154,8 +159,8 @@ async function deployDependency(params: {
     configDefaults,
     secrets,
     deps: {}, // Dependencies of dependencies (for now, don't go deeper)
-    tenantSlug,
-    tenantNamespace,
+    tenantSlug: workspaceSlug,
+    tenantNamespace: workspaceNamespace,
   });
 
   const renderedValues = renderValuesTemplate(
@@ -167,10 +172,11 @@ async function deployDependency(params: {
   const deployment = await prisma.deployment.create({
     data: {
       tenantId,
+      workspaceId,
       recipeId: depRecipe.id,
       recipeVersion: depRecipe.version,
       name: depName,
-      namespace: tenantNamespace,
+      namespace: workspaceNamespace,
       helmRelease,
       config: depConfig as unknown as Prisma.InputJsonValue,
       secretsRef,
@@ -185,7 +191,7 @@ async function deployDependency(params: {
     helmRelease,
     chartUrl: depRecipe.chartUrl,
     chartVersion: depRecipe.chartVersion ?? undefined,
-    tenantNamespace,
+    tenantNamespace: workspaceNamespace,
     renderedValues,
   };
 
@@ -202,7 +208,7 @@ async function deployDependency(params: {
   const connectionInfo = buildConnectionInfo(
     dep,
     helmRelease,
-    tenantNamespace,
+    workspaceNamespace,
     depConfig
   );
 

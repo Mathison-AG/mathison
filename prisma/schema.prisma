@@ -15,16 +15,18 @@ datasource db {
 // ─── Auth & Tenancy ──────────────────────────────────────
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  passwordHash  String?        @map("password_hash")
-  name          String?
-  role          Role           @default(USER)
-  tenantId      String         @map("tenant_id")
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  conversations Conversation[]
-  createdAt     DateTime       @default(now()) @map("created_at")
-  updatedAt     DateTime       @updatedAt @map("updated_at")
+  id                String         @id @default(cuid())
+  email             String         @unique
+  passwordHash      String?        @map("password_hash")
+  name              String?
+  role              Role           @default(USER)
+  tenantId          String         @map("tenant_id")
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  activeWorkspaceId String?        @map("active_workspace_id")
+  activeWorkspace   Workspace?     @relation("ActiveWorkspace", fields: [activeWorkspaceId], references: [id])
+  conversations     Conversation[]
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
   @@map("users")
 }
@@ -38,10 +40,9 @@ model Tenant {
   id            String         @id @default(cuid())
   slug          String         @unique
   name          String
-  namespace     String         @unique // K8s namespace: "tenant-{slug}"
-  quota         Json           @default("{}")
   status        TenantStatus   @default(ACTIVE)
   users         User[]
+  workspaces    Workspace[]
   deployments   Deployment[]
   conversations Conversation[]
   createdAt     DateTime       @default(now()) @map("created_at")
@@ -53,6 +54,30 @@ model Tenant {
 enum TenantStatus {
   ACTIVE
   SUSPENDED
+  DELETED
+}
+
+model Workspace {
+  id          String          @id @default(cuid())
+  tenantId    String          @map("tenant_id")
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  slug        String          // unique within tenant
+  name        String
+  namespace   String          @unique // K8s namespace: "{tenantSlug}-{workspaceSlug}"
+  quota       Json            @default("{}")
+  status      WorkspaceStatus @default(ACTIVE)
+  deployments Deployment[]
+  activeUsers User[]          @relation("ActiveWorkspace")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@unique([tenantId, slug])
+  @@map("workspaces")
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  DELETING
   DELETED
 }
 
@@ -149,11 +174,13 @@ model Deployment {
   id            String           @id @default(cuid())
   tenantId      String           @map("tenant_id")
   tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  workspaceId   String           @map("workspace_id")
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id])
   recipeId      String           @map("recipe_id")
   recipe        Recipe           @relation(fields: [recipeId], references: [id])
   recipeVersion Int              @map("recipe_version")
   name          String // "my-postgresql"
-  namespace     String // tenant's K8s namespace
+  namespace     String // workspace's K8s namespace
   helmRelease   String           @map("helm_release")
   config        Json             @default("{}")
   secretsRef    String?          @map("secrets_ref")
@@ -164,7 +191,7 @@ model Deployment {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
-  @@unique([tenantId, name])
+  @@unique([workspaceId, name])
   @@map("deployments")
 }
 

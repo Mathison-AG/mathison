@@ -4,6 +4,8 @@
  * Core orchestration for deploying, upgrading, and removing services.
  * Called by agent tools — coordinates recipe lookup, dependency resolution,
  * secret generation, template rendering, and job queuing.
+ *
+ * Deployments are scoped to a workspace (which maps to a K8s namespace).
  */
 
 import { Prisma } from "@/generated/prisma/client";
@@ -51,11 +53,12 @@ interface RemoveResult {
  */
 export async function initiateDeployment(params: {
   tenantId: string;
+  workspaceId: string;
   recipeSlug: string;
   name?: string;
   config?: Record<string, unknown>;
 }): Promise<DeployResult> {
-  const { tenantId, recipeSlug, config = {} } = params;
+  const { tenantId, workspaceId, recipeSlug, config = {} } = params;
 
   // 1. Look up recipe
   const recipe = await getRecipe(recipeSlug);
@@ -63,35 +66,37 @@ export async function initiateDeployment(params: {
     throw new Error(`Recipe '${recipeSlug}' not found in catalog`);
   }
 
-  // 2. Get tenant info
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: { slug: true, namespace: true },
+  // 2. Get workspace info (includes namespace)
+  const workspace = await prisma.workspace.findFirst({
+    where: { id: workspaceId, tenantId, status: "ACTIVE" },
+    select: { slug: true, namespace: true, tenant: { select: { slug: true } } },
   });
-  if (!tenant) {
-    throw new Error("Tenant not found");
+  if (!workspace) {
+    throw new Error("Workspace not found");
   }
 
+  const tenantSlug = workspace.tenant.slug;
   const deploymentName = params.name || recipe.slug;
-  const helmRelease = `${tenant.slug}-${deploymentName}`;
+  const helmRelease = `${workspace.slug}-${deploymentName}`;
 
-  // 3. Check for duplicate
+  // 3. Check for duplicate within workspace
   const existing = await prisma.deployment.findUnique({
     where: {
-      tenantId_name: { tenantId, name: deploymentName },
+      workspaceId_name: { workspaceId, name: deploymentName },
     },
   });
   if (existing) {
     throw new Error(
-      `A service named '${deploymentName}' is already deployed (status: ${existing.status})`
+      `A service named '${deploymentName}' is already deployed in this workspace (status: ${existing.status})`
     );
   }
 
-  // 4. Resolve dependencies
+  // 4. Resolve dependencies (within workspace)
   const { resolved: depInfo, newDeploymentIds } = await resolveDependencies({
     tenantId,
-    tenantSlug: tenant.slug,
-    tenantNamespace: tenant.namespace,
+    workspaceId,
+    workspaceSlug: workspace.slug,
+    workspaceNamespace: workspace.namespace,
     recipe,
   });
 
@@ -101,12 +106,12 @@ export async function initiateDeployment(params: {
   // Store secrets in K8s
   const secretsRef =
     Object.keys(secrets).length > 0
-      ? `secret-${tenant.slug}-${deploymentName}`
+      ? `secret-${workspace.slug}-${deploymentName}`
       : null;
 
   if (secretsRef && Object.keys(secrets).length > 0) {
     try {
-      await createK8sSecret(tenant.namespace, secretsRef, secrets);
+      await createK8sSecret(workspace.namespace, secretsRef, secrets);
     } catch (err) {
       console.error(`[engine] Failed to create K8s secret for '${deploymentName}':`, err);
       // Continue — secrets are also in the rendered values
@@ -120,8 +125,8 @@ export async function initiateDeployment(params: {
     configDefaults,
     secrets,
     deps: depInfo,
-    tenantSlug: tenant.slug,
-    tenantNamespace: tenant.namespace,
+    tenantSlug,
+    tenantNamespace: workspace.namespace,
   });
 
   const renderedValues = renderValuesTemplate(recipe.valuesTemplate, context);
@@ -130,10 +135,11 @@ export async function initiateDeployment(params: {
   const deployment = await prisma.deployment.create({
     data: {
       tenantId,
+      workspaceId,
       recipeId: recipe.id,
       recipeVersion: recipe.version,
       name: deploymentName,
-      namespace: tenant.namespace,
+      namespace: workspace.namespace,
       helmRelease,
       config: config as unknown as Prisma.InputJsonValue,
       secretsRef,
@@ -149,7 +155,7 @@ export async function initiateDeployment(params: {
     helmRelease,
     chartUrl: recipe.chartUrl,
     chartVersion: recipe.chartVersion ?? undefined,
-    tenantNamespace: tenant.namespace,
+    tenantNamespace: workspace.namespace,
     renderedValues,
   };
 
@@ -163,7 +169,7 @@ export async function initiateDeployment(params: {
       : "";
 
   console.log(
-    `[engine] Deployment '${deploymentName}' (${recipe.displayName}) queued${depMsg}`
+    `[engine] Deployment '${deploymentName}' (${recipe.displayName}) queued in workspace '${workspace.slug}'${depMsg}`
   );
 
   return {
@@ -190,6 +196,7 @@ export async function initiateUpgrade(params: {
   const deployment = await prisma.deployment.findFirst({
     where: { id: deploymentId, tenantId },
     include: {
+      workspace: { select: { slug: true, namespace: true, tenant: { select: { slug: true } } } },
       recipe: {
         select: {
           slug: true,
@@ -209,13 +216,7 @@ export async function initiateUpgrade(params: {
     throw new Error("Deployment not found");
   }
 
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    select: { slug: true, namespace: true },
-  });
-  if (!tenant) {
-    throw new Error("Tenant not found");
-  }
+  const tenantSlug = deployment.workspace.tenant.slug;
 
   // Merge configs
   const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
@@ -234,8 +235,8 @@ export async function initiateUpgrade(params: {
     configDefaults,
     secrets,
     deps: {}, // TODO: re-resolve deps for upgrades
-    tenantSlug: tenant.slug,
-    tenantNamespace: tenant.namespace,
+    tenantSlug,
+    tenantNamespace: deployment.workspace.namespace,
   });
 
   const renderedValues = renderValuesTemplate(
@@ -258,7 +259,7 @@ export async function initiateUpgrade(params: {
     helmRelease: deployment.helmRelease,
     chartUrl: deployment.recipe.chartUrl,
     chartVersion: deployment.recipe.chartVersion ?? undefined,
-    tenantNamespace: tenant.namespace,
+    tenantNamespace: deployment.workspace.namespace,
     renderedValues,
   };
 
@@ -293,6 +294,7 @@ export async function initiateRemoval(params: {
       name: true,
       helmRelease: true,
       namespace: true,
+      workspaceId: true,
       recipe: { select: { displayName: true } },
     },
   });
@@ -301,10 +303,10 @@ export async function initiateRemoval(params: {
     throw new Error("Deployment not found");
   }
 
-  // Check for dependents
+  // Check for dependents within the same workspace
   const dependents = await prisma.deployment.findMany({
     where: {
-      tenantId,
+      workspaceId: deployment.workspaceId,
       dependsOn: { has: deploymentId },
       status: { not: "STOPPED" },
     },

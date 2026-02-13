@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getActiveWorkspace } from "@/lib/workspace/context";
 
 export async function GET() {
   try {
@@ -10,8 +11,16 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const workspace = await getActiveWorkspace(
+      session.user.tenantId,
+      session.user.id
+    );
+    if (!workspace) {
+      return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+    }
+
     const deployments = await prisma.deployment.findMany({
-      where: { tenantId: session.user.tenantId },
+      where: { workspaceId: workspace.id },
       include: {
         recipe: {
           select: {

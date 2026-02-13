@@ -70,4 +70,4 @@ Track new features built after MVP. Add entries as you go.
 
 | Date | Feature | Files Changed | Notes |
 |------|---------|---------------|-------|
-| — | *(none yet)* | — | — |
+| 2026-02-13 | Multi-workspace support | ~20 files | New Workspace model, workspace CRUD API, sidebar selector, settings management, deployment engine workspace-scoped, AI agent workspace tools. Namespace format: `{tenantSlug}-{workspaceSlug}`. Active workspace via cookie + DB. Migration auto-created default workspaces for existing tenants. |

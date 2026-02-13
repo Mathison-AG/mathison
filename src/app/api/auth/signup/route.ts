@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 
 import { prisma } from "@/lib/db";
-import { provisionTenant } from "@/lib/tenant/manager";
+import { createNamespace, applyNetworkPolicy } from "@/lib/cluster/kubernetes";
 
 const signupSchema = z.object({
   email: z.string().email(),
@@ -67,18 +67,25 @@ export async function POST(req: Request) {
       slug = `${slug}-${Math.random().toString(36).slice(2, 7)}`;
     }
 
-    const namespace = `tenant-${slug}`;
-
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create tenant + user in a transaction
-    const { user } = await prisma.$transaction(async (tx) => {
+    // Create tenant + user + default workspace in a transaction
+    const { user, defaultWorkspace } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
           slug,
           name: workspace,
-          namespace,
+        },
+      });
+
+      // Create default workspace
+      const ws = await tx.workspace.create({
+        data: {
+          tenantId: tenant.id,
+          slug: "default",
+          name: "Default",
+          namespace: `${slug}-default`,
         },
       });
 
@@ -89,6 +96,7 @@ export async function POST(req: Request) {
           name,
           role: "ADMIN",
           tenantId: tenant.id,
+          activeWorkspaceId: ws.id,
         },
         select: {
           id: true,
@@ -96,19 +104,28 @@ export async function POST(req: Request) {
         },
       });
 
-      return { tenant, user };
+      return { tenant, user, defaultWorkspace: ws };
     });
 
-    // Provision K8s namespace (non-blocking — signup succeeds even if K8s fails)
-    provisionTenant({ slug, namespace }).catch((err) => {
-      console.error(
-        `[POST /api/auth/signup] K8s provisioning failed for ${namespace} (will retry):`,
-        err
-      );
-    });
+    // Provision K8s namespace for the default workspace (non-blocking)
+    (async () => {
+      try {
+        await createNamespace(defaultWorkspace.namespace, {
+          "mathison.io/tenant": slug,
+          "mathison.io/workspace": "default",
+          "mathison.io/managed-by": "mathison",
+        });
+        await applyNetworkPolicy(defaultWorkspace.namespace);
+      } catch (err) {
+        console.error(
+          `[POST /api/auth/signup] K8s provisioning failed for ${defaultWorkspace.namespace} (will retry):`,
+          err
+        );
+      }
+    })();
 
     console.log(
-      `[POST /api/auth/signup] Created user ${user.id} (${user.email}) with namespace ${namespace}`
+      `[POST /api/auth/signup] Created user ${user.id} (${user.email}) with workspace ${defaultWorkspace.namespace}`
     );
 
     return NextResponse.json(

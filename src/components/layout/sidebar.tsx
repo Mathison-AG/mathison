@@ -1,6 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -15,6 +16,9 @@ import {
   Moon,
   Sun,
   Monitor,
+  ChevronsUpDown,
+  Check,
+  Layers,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -30,6 +34,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -41,11 +46,19 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
+interface WorkspaceOption {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   userName?: string | null;
   userEmail?: string | null;
+  workspaces: WorkspaceOption[];
+  activeWorkspaceId: string;
 }
 
 export function Sidebar({
@@ -53,9 +66,15 @@ export function Sidebar({
   onToggle,
   userName,
   userEmail,
+  workspaces,
+  activeWorkspaceId,
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { setTheme, theme } = useTheme();
+  const [isSwitching, startTransition] = useTransition();
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   // Avoid hydration mismatch: theme is undefined on the server
   const mounted = useSyncExternalStore(
@@ -81,6 +100,26 @@ export function Sidebar({
         .slice(0, 2)
     : userEmail?.[0]?.toUpperCase() ?? "U";
 
+  async function handleWorkspaceSwitch(workspaceId: string) {
+    if (workspaceId === activeWorkspaceId) return;
+
+    try {
+      const res = await fetch("/api/workspaces/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspaceId }),
+      });
+
+      if (res.ok) {
+        startTransition(() => {
+          router.refresh();
+        });
+      }
+    } catch (err) {
+      console.error("[sidebar] Failed to switch workspace:", err);
+    }
+  }
+
   return (
     <aside
       className={cn(
@@ -99,6 +138,89 @@ export function Sidebar({
           </span>
         )}
       </div>
+
+      {/* Workspace selector */}
+      <div className="p-2">
+        {collapsed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="w-full"
+                    disabled={isSwitching}
+                  >
+                    <Layers className="size-5" />
+                    <span className="sr-only">Switch workspace</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="w-48">
+                  {workspaces.map((ws) => (
+                    <DropdownMenuItem
+                      key={ws.id}
+                      onClick={() => handleWorkspaceSwitch(ws.id)}
+                    >
+                      {ws.id === activeWorkspaceId && (
+                        <Check className="mr-2 size-4" />
+                      )}
+                      <span className={ws.id !== activeWorkspaceId ? "ml-6" : ""}>
+                        {ws.name}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {activeWorkspace?.name ?? "Workspace"}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-between gap-2 px-3 text-left font-normal"
+                disabled={isSwitching}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Layers className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">
+                    {activeWorkspace?.name ?? "Workspace"}
+                  </span>
+                </div>
+                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+              {workspaces.map((ws) => (
+                <DropdownMenuItem
+                  key={ws.id}
+                  onClick={() => handleWorkspaceSwitch(ws.id)}
+                >
+                  {ws.id === activeWorkspaceId ? (
+                    <Check className="mr-2 size-4" />
+                  ) : (
+                    <span className="mr-2 w-4" />
+                  )}
+                  <span className="truncate">{ws.name}</span>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="cursor-pointer">
+                  <Settings className="mr-2 size-4" />
+                  Manage workspaces
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      <Separator />
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-2">

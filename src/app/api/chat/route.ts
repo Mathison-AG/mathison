@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getProvider } from "@/lib/agent/provider";
 import { getTools } from "@/lib/agent/tools";
 import { systemPrompt } from "@/lib/agent/system-prompt";
+import { getActiveWorkspace } from "@/lib/workspace/context";
 
 import type { UIMessage } from "ai";
 
@@ -15,7 +16,19 @@ export async function POST(req: Request) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    // 2. Parse UI messages from request body (sent by useChat)
+    // 2. Resolve active workspace
+    const workspace = await getActiveWorkspace(
+      session.user.tenantId,
+      session.user.id
+    );
+    if (!workspace) {
+      return new Response(
+        JSON.stringify({ error: "No workspace found. Create one first." }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // 3. Parse UI messages from request body (sent by useChat)
     const body = (await req.json()) as { messages?: UIMessage[] };
 
     if (!body.messages || !Array.isArray(body.messages)) {
@@ -25,16 +38,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Get LLM provider and tenant-scoped tools
+    // 4. Get LLM provider and workspace-scoped tools
     const provider = getProvider();
-    const tools = getTools(session.user.tenantId);
+    const tools = getTools(session.user.tenantId, workspace.id);
 
-    // 4. Convert UI messages to model messages for streamText
+    // 5. Convert UI messages to model messages for streamText
     const modelMessages = await convertToModelMessages(body.messages, {
       tools,
     });
 
-    // 5. Stream the response with multi-step tool calling
+    // 6. Stream the response with multi-step tool calling
     const result = streamText({
       model: provider,
       system: systemPrompt,

@@ -28,7 +28,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Split config pattern**: `auth.config.ts` (Edge-safe) for middleware + `auth.ts` (full, with Prisma) for server/API. Edge runtime can't import Prisma.
 - **Session shape**: `session.user.{id, tenantId, role, name, email}` — augmented via `src/types/next-auth.d.ts`.
 - **Auth guard**: `const session = await auth(); if (!session?.user) return 401;`
-- **Signup provisions K8s namespace**: Fire-and-forget. If K8s unavailable, signup still succeeds.
+- **Signup provisions default workspace**: Creates tenant + default workspace + K8s namespace. Fire-and-forget K8s provisioning. Signup still succeeds if K8s unavailable.
 - **Test user**: admin@mathison.dev / admin1234, workspace: mathison-dev
 
 ## AI SDK v6
@@ -42,6 +42,19 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Server route: `convertToModelMessages(uiMessages)` before `streamText`
 - UIMessage `parts` array (not `content`/`toolInvocations`). Tool part states: `input-available`, `output-available`, `output-error`
 - `@ai-sdk/react` v3 is a separate package — not re-exported from `ai`
+
+## Workspaces
+
+- **Workspace model**: Belongs to Tenant, maps to K8s namespace `{tenantSlug}-{workspaceSlug}`.
+- **Active workspace**: Resolved via cookie (`mathison-workspace`) → user's `activeWorkspaceId` in DB → first workspace fallback.
+- **Workspace context helper**: `getActiveWorkspace(tenantId, userId)` from `@/lib/workspace/context`.
+- **Deployments are workspace-scoped**: `Deployment.workspaceId` + unique constraint `[workspaceId, name]`.
+- **Deployment engine**: `initiateDeployment()` takes `workspaceId`, looks up `workspace.namespace`.
+- **AI agent tools**: `getTools(tenantId, workspaceId)` — 3 workspace tools (list, create, delete) + deployment tools scoped to workspace.
+- **Workspace deletion**: Uninstalls Helm releases, deletes K8s namespace, marks deployments STOPPED, reassigns users to another workspace.
+- **Cannot delete last workspace**: Enforced in `deleteWorkspace()`.
+- **Sidebar workspace selector**: Dropdown in sidebar between brand and nav. Calls `/api/workspaces/switch` + `router.refresh()`.
+- **Settings workspace manager**: Full CRUD in `/settings` page with TanStack Query.
 
 ## Kubernetes & Helm
 

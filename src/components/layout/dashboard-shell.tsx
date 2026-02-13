@@ -7,18 +7,28 @@ import { Header } from "./header";
 import { ChatPanel } from "./chat-panel";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
+interface WorkspaceOption {
+  id: string;
+  slug: string;
+  name: string;
+}
+
 interface DashboardShellProps {
   children: React.ReactNode;
   userName?: string | null;
   userEmail?: string | null;
-  workspaceName?: string;
+  workspaces: WorkspaceOption[];
+  activeWorkspaceId: string;
+  activeWorkspaceName: string;
 }
 
 export function DashboardShell({
   children,
   userName,
   userEmail,
-  workspaceName,
+  workspaces,
+  activeWorkspaceId,
+  activeWorkspaceName,
 }: DashboardShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -32,6 +42,8 @@ export function DashboardShell({
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           userName={userName}
           userEmail={userEmail}
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
         />
       </div>
 
@@ -44,6 +56,8 @@ export function DashboardShell({
             onToggle={() => setMobileMenuOpen(false)}
             userName={userName}
             userEmail={userEmail}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
           />
         </SheetContent>
       </Sheet>
@@ -51,7 +65,7 @@ export function DashboardShell({
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
-          workspaceName={workspaceName}
+          workspaceName={activeWorkspaceName}
           userName={userName}
           userEmail={userEmail}
           onMobileMenuToggle={() => setMobileMenuOpen(true)}
