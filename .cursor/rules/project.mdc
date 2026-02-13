@@ -1,0 +1,95 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Mathison — AI-First Kubernetes Platform
+
+## The .cursor Folder Is Yours
+
+The entire `.cursor/` directory belongs to you — the AI agent. You have full ownership:
+- **Create** any file or folder that helps you work better
+- **Update** any file as you learn new things or complete work
+- **Delete** anything that's outdated or no longer useful
+- **Reorganize** if the structure stops serving you
+
+This is your workspace. Use it to track progress, store patterns, keep notes, manage tasks — whatever maximizes quality and efficiency. No file in `.cursor/` is sacred. Adapt it to your needs as the project evolves.
+
+## What This Is
+
+You are building **Mathison**, a Next.js 15 application that lets users deploy and manage apps on Kubernetes through an AI chat agent. Users say "deploy PostgreSQL" and the agent handles Helm, namespaces, secrets, dependencies — everything.
+
+## Where Things Are
+
+Everything agent-related lives under `.cursor/`:
+
+- **Platform spec**: `.cursor/PLATFORM_PROMPT.md` — the full architecture, schema, code patterns. Read this if you need deep context.
+- **Task files**: `.cursor/tasks/01-project-bootstrap.md` through `.cursor/tasks/11-catalog-deployments-ui.md` — each step you're implementing.
+- **Progress**: `.cursor/PROGRESS.md` — which steps are done, current state, known issues. **Read this at the start of every session.**
+- **Testing guide**: `.cursor/TESTING.md` — how to verify each step works.
+- **Reference data**: `.cursor/reference/` — real-world Helm values and other reference material.
+- **Rules**: `.cursor/rules/` — project context, coding standards, memory (all always-applied).
+- **App code**: `mathison/` — the Next.js application (created in Step 01).
+
+## Session Startup Checklist
+
+Every time you start a new session:
+
+1. Read `.cursor/PROGRESS.md` to know where you are (step status, decisions, cross-step deps)
+2. Read the task file for the current step (e.g., `.cursor/tasks/03-authentication.md`)
+3. Skim `.cursor/rules/memory.mdc` — it has gotchas and learnings from previous sessions (auto-loaded)
+4. Check if Docker services are running: `docker compose -f mathison/docker-compose.yaml ps`
+5. Check if the dev server is needed: `npm run dev` in the mathison directory
+6. Start building
+
+## How You Test
+
+You have these tools for verification:
+
+- **Shell**: run `curl` against API endpoints, run `npm run typecheck`, run DB commands
+- **Browser**: navigate to `http://localhost:3000`, test UI flows, fill forms, verify rendering
+- **Linter**: check for TypeScript/ESLint errors after edits
+- **Database**: `npx prisma studio` or `npx prisma db execute` for SQL queries
+- **K8s cluster**: `kubectl --kubeconfig ~/.kube/mathison-cloud-dev.yaml` to verify cluster operations
+
+## After Completing a Step
+
+1. Run the verification checklist from the task file
+2. Run `npm run typecheck` and `npm run lint` — fix any errors you introduced
+3. Update `.cursor/PROGRESS.md`: mark step complete, note any issues, update "current state", add decisions to the log
+4. Update `.cursor/rules/memory.mdc`: add gotchas, useful patterns, package quirks discovered during this step. Delete anything that's no longer relevant.
+5. Commit with a clear message: `git add -A && git commit -m "step XX: description"`
+
+## Tech Stack Quick Reference
+
+- Next.js 15 (App Router), TypeScript strict, React 19
+- Tailwind CSS v4, shadcn/ui, lucide-react icons
+- Prisma + PostgreSQL 16 (pgvector), Redis 7
+- Auth.js v5, Vercel AI SDK, BullMQ
+- React Flow (canvas), TanStack Query
+- Helm CLI via execa, @kubernetes/client-node
+
+## Key Conventions
+
+- Server Components by default. Only `"use client"` for interactivity.
+- Zod for ALL validation (env vars, API inputs, tool params).
+- `@/*` path alias maps to `src/*`.
+- Prisma singleton at `src/lib/db.ts`.
+- Consistent API errors: `{ error: string, details?: any }` with proper HTTP codes.
+- No secrets in committed files. Ever.
+
+## K8s Testing Cluster (kind)
+
+A local **kind** cluster is used for all K8s testing. This is fully disposable and automatable.
+
+- Install: `brew install kind`
+- Create: `kind create cluster --name mathison-dev`
+- Context: `kind-mathison-dev` (auto-set by kind)
+- Tear down: `kind delete cluster --name mathison-dev`
+- No kubeconfig path needed — kind sets the kubectl context automatically
+
+## LLM Provider
+
+- **Anthropic** (Claude) — API key provided by user at Step 05
+- Set `LLM_PROVIDER=anthropic` in `mathison/.env.local`

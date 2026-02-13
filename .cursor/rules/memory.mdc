@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Agent Memory
+
+Persistent scratchpad for things learned during development. Read this every session. Update it as you go — add discoveries, gotchas, patterns that worked. Delete entries that are no longer relevant.
+
+## How to Use This File
+
+- **Add** when you discover something non-obvious that will save time later
+- **Delete** when an entry is no longer relevant (dependency upgraded, workaround no longer needed)
+- **Keep it lean** — this is loaded every session, so don't let it bloat. If something belongs in a task file or the decisions log, put it there instead.
+
+---
+
+## Gotchas & Workarounds
+
+(empty — will be populated during development)
+
+<!-- Example entries:
+- `execa` v9 is ESM-only — use `import { execa } from "execa"` not require. If CJS context needed, use dynamic `await import("execa")`
+- Prisma `Json` fields return `Prisma.JsonValue` not `Record<string, any>` — cast with `as Record<string, unknown>` and validate with Zod at runtime
+- shadcn/ui Sheet: use `open` + `onOpenChange` props for controlled mode, NOT internal state
+-->
+
+## Patterns That Worked
+
+(empty — will be populated during development)
+
+<!-- Example entries:
+- Auth guard one-liner for API routes: `const session = await auth(); if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });`
+- Embedding generation reliably takes ~200ms per recipe — batch seed inserts, don't generate embeddings inline
+-->
+
+## Package Notes
+
+(empty — will be populated during development)
+
+<!-- Example entries:
+- next-auth@5.0.0-beta.25 — stable enough for credentials provider, skip beta.26 (broke JWT callback types)
+- @xyflow/react needs explicit CSS import: `import "@xyflow/react/dist/style.css"`
+-->
+
+## Things to Revisit
+
+(empty — will be populated during development)
+
+<!-- Example entries:
+- Step 04: seed script generates embeddings sequentially — could parallelize with Promise.all if it's too slow
+- Step 07: BullMQ worker doesn't retry failed jobs yet — add retry logic before production
+-->

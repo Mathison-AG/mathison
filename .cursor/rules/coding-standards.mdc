@@ -1,0 +1,148 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Mathison — Coding Standards
+
+These patterns must stay consistent across all 11 build steps. Follow them in every session.
+
+## TypeScript
+
+- `strict: true` — no `any` unless absolutely unavoidable (and add a `// eslint-disable-next-line` comment explaining why)
+- Use `unknown` over `any` for untyped data, then narrow with Zod or type guards
+- Use `interface` for object shapes, `type` for unions/intersections/aliases
+- Export types from `src/types/` — never define shared types inline in components
+
+## Imports — Consistent Ordering
+
+```typescript
+// 1. Node/framework built-ins
+import { NextResponse } from "next/server";
+
+// 2. Third-party libraries
+import { z } from "zod";
+import { streamText } from "ai";
+
+// 3. Internal absolute imports (@/ alias)
+import { prisma } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { env } from "@/lib/config";
+
+// 4. Relative imports (components, utils in same feature)
+import { StatusBadge } from "./status-badge";
+
+// 5. Types (import type when only used for types)
+import type { Recipe } from "@/types/recipe";
+```
+
+## API Route Pattern
+
+Every API route handler follows this structure:
+
+```typescript
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+
+export async function GET(req: Request) {
+  try {
+    // 1. Auth check (if protected)
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 2. Input validation (Zod)
+    // 3. Business logic
+    // 4. Return success
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[GET /api/example]", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+Rules:
+- Always wrap in try/catch
+- Log errors with `[METHOD /api/path]` prefix
+- Return `{ error: string }` for errors, never throw raw
+- Use `NextResponse.json()` not `new Response()`
+- Validate all inputs with Zod — never trust request body
+
+## Zod Validation in Routes
+
+```typescript
+const bodySchema = z.object({
+  name: z.string().min(1).max(100),
+  config: z.record(z.unknown()).optional(),
+});
+
+// In the handler:
+const parsed = bodySchema.safeParse(await req.json());
+if (!parsed.success) {
+  return NextResponse.json(
+    { error: "Invalid input", details: parsed.error.flatten() },
+    { status: 400 }
+  );
+}
+const { name, config } = parsed.data;
+```
+
+## React Components
+
+- Server Components by default (no directive)
+- Add `"use client"` ONLY when the component needs: hooks, event handlers, browser APIs, or context
+- Props interface defined above the component, named `{ComponentName}Props`
+- Use `function` declarations for components, not arrow functions
+
+```typescript
+// Good
+interface RecipeCardProps {
+  recipe: Recipe;
+  onDeploy?: (slug: string) => void;
+}
+
+export function RecipeCard({ recipe, onDeploy }: RecipeCardProps) {
+  return <div>...</div>;
+}
+```
+
+## Prisma Queries
+
+- Always use the singleton from `@/lib/db` — never instantiate `new PrismaClient()`
+- Always scope tenant queries by `tenantId`:
+  ```typescript
+  prisma.deployment.findMany({
+    where: { tenantId: session.user.tenantId },
+  })
+  ```
+- Use `select` or `include` explicitly — don't fetch everything
+- Raw SQL only for pgvector queries — use Prisma for everything else
+
+## Error Messages
+
+- User-facing: clear, helpful, no internals ("Service not found" not "Prisma P2025")
+- Logs: include full error + context (`console.error("[deployService]", { recipeSlug, tenantId }, error)`)
+- Never expose stack traces, SQL queries, or internal IDs in API responses
+
+## File Naming
+
+- Components: `kebab-case.tsx` (e.g., `recipe-card.tsx`)
+- Libraries: `kebab-case.ts` (e.g., `system-prompt.ts`)
+- Types: `kebab-case.ts` in `src/types/`
+- API routes: `route.ts` inside the path directory
+
+## Commits
+
+After completing each step:
+```
+step XX: short description of what was built
+
+- bullet points of key changes
+- note any decisions that affect later steps
+```
