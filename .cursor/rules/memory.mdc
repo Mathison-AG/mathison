@@ -119,6 +119,16 @@ Persistent scratchpad for things learned during development. Read this every ses
 - **Route group**: `(dashboard)` is the main protected route group — maps to `/`, `/catalog`, `/deployments`, `/settings`. No root `page.tsx` needed since middleware handles auth redirect and the route group's `page.tsx` matches `/`.
 - **Active nav detection**: `pathname === "/"` for dashboard, `pathname.startsWith("/catalog")` etc for others. Prevents false positives.
 
+## User-facing Language (Cloud-first rebrand)
+
+- **NEVER expose K8s terminology in the UI**: No "Kubernetes", "K8s", "Helm", "pods", "namespaces", "clusters", "nodes", "YAML" in any user-facing text.
+- **Translation table**: pod → instance/service, namespace → workspace, Helm chart → service template, container → service/app, node → omit.
+- **System prompt**: Instructs the AI agent to use plain service language and never volunteer infrastructure details.
+- **Tool descriptions**: Neutralized — no Helm/K8s references in descriptions that the LLM reads.
+- **Worker error messages**: Rewritten in user terms ("service not yet healthy" not "pods not ready").
+- **Internal code**: Variable names, logging, developer-facing code still use K8s/Helm terminology — only user-facing strings changed.
+- **Decision D42 in PROGRESS.md** tracks this.
+
 ## Things to Revisit
 
 - Next.js 16 "proxy" convention replacing "middleware" — monitor for when this becomes required

@@ -154,7 +154,7 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Helm install succeeded but pods not ready: ${podStatuses}`,
+          errorMessage: `Service deployed but not yet healthy: ${podStatuses}`,
         },
       });
       console.warn(
@@ -315,7 +315,7 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Upgrade succeeded but pods not ready: ${podStatuses}`,
+          errorMessage: `Service updated but not yet healthy: ${podStatuses}`,
         },
       });
       console.warn(`[worker] Upgrade PARTIAL: ${helmRelease} upgraded but pods not ready`);
@@ -372,7 +372,7 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: "Health check failed: pods not ready",
+          errorMessage: "Health check failed: service is not responding",
         },
       });
     }

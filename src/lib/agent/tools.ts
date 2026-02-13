@@ -335,7 +335,7 @@ export function getTools(tenantId: string) {
 
     updateService: tool({
       description:
-        "Update the configuration of a running service. This performs a Helm upgrade.",
+        "Update the configuration of a running service. Applies the new settings and restarts if needed.",
       inputSchema: z.object({
         deploymentId: z.string().describe("The deployment ID"),
         config: z
@@ -403,7 +403,7 @@ export function getTools(tenantId: string) {
 
     createRecipe: tool({
       description:
-        "Create a new service recipe in the catalog. Use this when you find a Helm chart that isn't in the catalog yet.",
+        "Create a new service recipe in the catalog. Use this when a requested service isn't available yet.",
       inputSchema: z.object({
         slug: z.string().describe("URL-friendly identifier, e.g. 'grafana'"),
         displayName: z.string().describe("Human-readable name, e.g. 'Grafana'"),
@@ -413,12 +413,12 @@ export function getTools(tenantId: string) {
           .describe(
             "Category: database, automation, monitoring, storage, analytics"
           ),
-        chartUrl: z.string().describe("Helm chart URL or repo/chart reference"),
+        chartUrl: z.string().describe("Package source URL or repository reference"),
         chartVersion: z.string().optional().describe("Specific chart version"),
         valuesTemplate: z
           .string()
           .optional()
-          .describe("Handlebars template for Helm values"),
+          .describe("Configuration template for the service"),
         configSchema: z
           .record(z.string(), z.unknown())
           .optional()
@@ -456,7 +456,7 @@ export function getTools(tenantId: string) {
 
     searchHelmCharts: tool({
       description:
-        "Search Artifact Hub for Helm charts. Use as fallback when the catalog doesn't have what the user needs.",
+        "Search for available service packages online. Use as fallback when the catalog doesn't have what the user needs.",
       inputSchema: z.object({
         query: z.string().describe("Search query for Artifact Hub")
       }),

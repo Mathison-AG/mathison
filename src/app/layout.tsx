@@ -12,7 +12,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Mathison",
   description:
-    "AI-first Kubernetes platform — deploy and manage apps with natural language",
+    "AI-first cloud platform — deploy and manage services with natural language",
 };
 
 export default function RootLayout({

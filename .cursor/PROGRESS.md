@@ -95,6 +95,7 @@ Record every architectural decision here. Future sessions depend on this.
 | D39 | Sidebar collapse state in `DashboardShell`, `hidden lg:flex` for desktop  | Step 08  | Steps 09-11                | Mobile uses Sheet from left side                                                                 |
 | D40 | Chat panel: standalone FAB + Sheet component, state self-contained        | Step 08  | Step 09                    | Step 09 replaces placeholder content with real chat UI                                          |
 | D41 | Theme hydration: `useSyncExternalStore` for mounted detection             | Step 08  | UI patterns                | Avoids react-hooks/set-state-in-effect lint error with `useState`+`useEffect`                   |
+| D42 | Cloud-first rebrand: hide K8s terminology from all user-facing text       | Post-08  | All UI, system prompt, tools | Users deploy "services" not "Helm charts". Internal code unchanged.                             |
 
 ## Cross-Step Dependencies
 

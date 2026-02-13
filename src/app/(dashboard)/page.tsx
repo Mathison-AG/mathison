@@ -45,8 +45,8 @@ export default async function DashboardPage() {
             Welcome to Mathison
           </h2>
           <p className="text-muted-foreground">
-            Your AI-powered Kubernetes platform. Deploy databases, apps, and
-            services by simply chatting with Mathison.
+            Deploy databases, apps, and services by simply chatting with
+            Mathison — your AI-powered cloud platform.
           </p>
         </div>
         <div className="flex items-center gap-2 justify-center text-sm text-muted-foreground">

@@ -64,7 +64,7 @@ export function ChatPanel() {
                 <p className="font-medium">Chat with Mathison</p>
                 <p className="text-sm text-muted-foreground">
                   Ask me to deploy services, check status, or manage your
-                  infrastructure.
+                  apps.
                 </p>
               </div>
             </div>
