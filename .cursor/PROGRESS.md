@@ -4,19 +4,19 @@
 
 ## Current State
 
-- **Current step**: 02 — Database Schema & Prisma (not started)
-- **App directory**: `mathison/` (created, scaffolded)
-- **Dev server**: not running (start with `cd mathison && yarn dev`)
+- **Current step**: 03 — Authentication (Auth.js v5) (not started)
+- **App directory**: workspace root (not inside `mathison/`)
+- **Dev server**: not running (start with `yarn dev`)
 - **Docker services**: running (postgres on 5433, redis on 6379)
-- **Database**: not migrated (minimal schema, no models yet)
-- **Last session**: Step 01 completed — full project bootstrap with Prisma 7, shadcn/ui, all deps
+- **Database**: migrated — all models created, pgvector active (v0.8.1)
+- **Last session**: Step 02 completed — full Prisma schema, migration, pgvector, seed stub
 
 ## Step Completion
 
 | Step | Name | Status | Notes |
 |------|------|--------|-------|
 | 01 | Project Bootstrap & Configuration | **Complete** | Prisma 7 adapter pattern, port 5433 for postgres, yarn |
-| 02 | Database Schema & Prisma | Not started | |
+| 02 | Database Schema & Prisma | **Complete** | All models, enums, pgvector, migration applied, seed stub ready |
 | 03 | Authentication (Auth.js v5) | Not started | |
 | 04 | Service Catalog Backend | Not started | |
 | 05 | AI Agent Core | Not started | |
@@ -59,6 +59,9 @@ Record every architectural decision here. Future sessions depend on this.
 | D6 | Prisma 7 with adapter pattern | Step 01 | Steps 02-07 | Latest Prisma; uses `prisma-client` generator, `@prisma/adapter-pg`, `prisma.config.ts` for URL |
 | D7 | Prisma client output: `src/generated/prisma` | Step 01 | All imports | Prisma 7 requires explicit output; import from `@/generated/prisma/client` |
 | D8 | Postgres port: 5433 | Step 01 | .env.local, docker-compose | Avoid conflict with existing postgres on 5432 |
+| D9 | App lives at workspace root, not inside `mathison/` | Step 01 | All | `mathison/` only has stale `.next` artifacts |
+| D10 | pgvector 0.8.1 with 1536-dim embedding columns | Step 02 | Steps 04-05 | Matches text-embedding-3-small output |
+| D11 | Migration name: `init` (timestamp: 20260213162759) | Step 02 | Future migrations | First migration creates all base tables |
 
 ## Cross-Step Dependencies
 

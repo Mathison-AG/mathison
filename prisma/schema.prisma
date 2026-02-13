@@ -1,9 +1,213 @@
-// Minimal schema for Step 01 bootstrap — full schema is added in Step 02
+// Mathison — Full database schema (Step 02)
+// Prisma 7: URL is configured in prisma.config.ts, not here
+
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector", schema: "public")]
+}
+
+// ─── Auth & Tenancy ──────────────────────────────────────
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String?        @map("password_hash")
+  name          String?
+  role          Role           @default(USER)
+  tenantId      String         @map("tenant_id")
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  conversations Conversation[]
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model Tenant {
+  id            String         @id @default(cuid())
+  slug          String         @unique
+  name          String
+  namespace     String         @unique // K8s namespace: "tenant-{slug}"
+  quota         Json           @default("{}")
+  status        TenantStatus   @default(ACTIVE)
+  users         User[]
+  deployments   Deployment[]
+  conversations Conversation[]
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+// ─── Service Catalog ─────────────────────────────────────
+
+model Recipe {
+  id               String          @id @default(cuid())
+  slug             String          @unique
+  displayName      String          @map("display_name")
+  description      String
+  category         String // "database", "automation", "monitoring", "storage"
+  tags             String[]
+  iconUrl          String?         @map("icon_url")
+
+  // Source
+  sourceType       String          @default("helm") @map("source_type")
+  chartUrl         String          @map("chart_url")
+  chartVersion     String?         @map("chart_version")
+
+  // Configuration
+  configSchema     Json            @default("{}") @map("config_schema")
+  secretsSchema    Json            @default("{}") @map("secrets_schema")
+  valuesTemplate   String          @default("") @map("values_template")
+  dependencies     Json            @default("[]")
+  ingressConfig    Json            @default("{}") @map("ingress_config")
+  resourceDefaults Json            @default("{}") @map("resource_defaults")
+  resourceLimits   Json            @default("{}") @map("resource_limits")
+  healthCheck      Json            @default("{}") @map("health_check")
+
+  // AI
+  aiHints          Json            @default("{}") @map("ai_hints")
+  embedding        Unsupported("vector(1536)")?
+
+  // Metadata
+  tier             RecipeTier      @default(COMMUNITY)
+  status           RecipeStatus    @default(DRAFT)
+  createdById      String?         @map("created_by_id")
+  version          Int             @default(1)
+  deployments      Deployment[]
+  versions         RecipeVersion[]
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  @@map("recipes")
+}
+
+enum RecipeTier {
+  OFFICIAL
+  VERIFIED
+  COMMUNITY
+}
+
+enum RecipeStatus {
+  DRAFT
+  PUBLISHED
+  DEPRECATED
+}
+
+model RecipeVersion {
+  id        String   @id @default(cuid())
+  recipeId  String   @map("recipe_id")
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  version   Int
+  snapshot  Json // Full recipe data at this version
+  changedBy String?  @map("changed_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([recipeId, version])
+  @@map("recipe_versions")
+}
+
+// ─── Stacks (bundled recipes) ────────────────────────────
+
+model Stack {
+  id          String                    @id @default(cuid())
+  slug        String                    @unique
+  displayName String                    @map("display_name")
+  description String
+  services    Json // [{recipeSlug, alias, config, wiring}]
+  aiHints     Json                      @default("{}") @map("ai_hints")
+  embedding   Unsupported("vector(1536)")?
+  tier        RecipeTier                @default(COMMUNITY)
+  status      RecipeStatus              @default(DRAFT)
+  createdById String?                   @map("created_by_id")
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+
+  @@map("stacks")
+}
+
+// ─── Deployments ─────────────────────────────────────────
+
+model Deployment {
+  id            String           @id @default(cuid())
+  tenantId      String           @map("tenant_id")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  recipeId      String           @map("recipe_id")
+  recipe        Recipe           @relation(fields: [recipeId], references: [id])
+  recipeVersion Int              @map("recipe_version")
+  name          String // "my-postgresql"
+  namespace     String // tenant's K8s namespace
+  helmRelease   String           @map("helm_release")
+  config        Json             @default("{}")
+  secretsRef    String?          @map("secrets_ref")
+  status        DeploymentStatus @default(PENDING)
+  url           String?
+  errorMessage  String?          @map("error_message")
+  dependsOn     String[]         @map("depends_on") // Deployment IDs
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@unique([tenantId, name])
+  @@map("deployments")
+}
+
+enum DeploymentStatus {
+  PENDING
+  DEPLOYING
+  RUNNING
+  FAILED
+  STOPPED
+  DELETING
+}
+
+// ─── Conversations ───────────────────────────────────────
+
+model Conversation {
+  id        String    @id @default(cuid())
+  tenantId  String    @map("tenant_id")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  title     String?
+  messages  Message[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("conversations")
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String       @map("conversation_id")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            MessageRole
+  content         String
+  toolInvocations Json?        @map("tool_invocations") // [{toolName, args, result}]
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@map("messages")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
 }

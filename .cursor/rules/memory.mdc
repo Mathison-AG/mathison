@@ -25,6 +25,11 @@ Persistent scratchpad for things learned during development. Read this every ses
 
 - shadcn/ui init with `--defaults` flag works cleanly with Tailwind v4 in Next.js 16
 - `npx create-next-app@latest --use-yarn` for yarn-based projects
+- Prisma 7 `postgresqlExtensions` preview feature works with `prisma-client` generator (not just `prisma-client-js`)
+- pgvector extension: `extensions = [pgvector(map: "vector", schema: "public")]` in datasource block
+- `Unsupported("vector(1536)")?` works in Prisma 7 — creates proper `vector(1536)` column in migration SQL
+- App lives at workspace root, not inside `mathison/` — run `yarn dev`, not `cd mathison && yarn dev`
+- Docker compose file is `docker-compose.local.yml` (not `docker-compose.yaml`)
 
 ## Package Notes
 
@@ -36,5 +41,5 @@ Persistent scratchpad for things learned during development. Read this every ses
 
 ## Things to Revisit
 
-- Step 02: Need to update prisma schema with full models, ensure pgvector extension works with Prisma 7 adapter pattern
-- Step 02: `@auth/prisma-adapter` compatibility with Prisma 7 — may need adjustment
+- Step 03: `@auth/prisma-adapter` compatibility with Prisma 7 — may need adjustment (User model uses custom fields, not default Auth.js fields)
+- Step 03: Auth.js User model doesn't have `emailVerified`, `image`, or `Account`/`Session` tables — may need to add or use custom adapter
