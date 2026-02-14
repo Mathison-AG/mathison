@@ -304,6 +304,7 @@ export function getTools(tenantId: string, workspaceId: string) {
         const services = await Promise.all(
           deployments.map(async (d) => {
             const k8sStatus = await getK8sPodStatus(d.namespace, d.helmRelease);
+            const config = d.config as Record<string, unknown>;
             return {
               deploymentId: d.id,
               name: d.name,
@@ -312,6 +313,12 @@ export function getTools(tenantId: string, workspaceId: string) {
               category: d.recipe.category,
               status: d.status as string,
               url: d.url,
+              appVersion: d.appVersion,
+              chartVersion: d.chartVersion,
+              resources: {
+                cpu: config.cpu_request ? `${config.cpu_request} / ${config.cpu_limit ?? "—"}` : null,
+                memory: config.memory_request ? `${config.memory_request} / ${config.memory_limit ?? "—"}` : null,
+              },
               pods: k8sStatus.pods,
               createdAt: d.createdAt.toISOString()
             };
@@ -354,6 +361,7 @@ export function getTools(tenantId: string, workspaceId: string) {
           deployment.helmRelease
         );
 
+        const config = deployment.config as Record<string, unknown>;
         return {
           deploymentId: deployment.id,
           name: deployment.name,
@@ -361,9 +369,18 @@ export function getTools(tenantId: string, workspaceId: string) {
           recipeSlug: deployment.recipe.slug,
           status: deployment.status as string,
           url: deployment.url,
+          appVersion: deployment.appVersion,
+          chartVersion: deployment.chartVersion,
+          revision: deployment.revision,
           namespace: deployment.namespace,
           helmRelease: deployment.helmRelease,
-          config: deployment.config as Record<string, unknown>,
+          config,
+          resources: {
+            cpuRequest: config.cpu_request ?? null,
+            cpuLimit: config.cpu_limit ?? null,
+            memoryRequest: config.memory_request ?? null,
+            memoryLimit: config.memory_limit ?? null,
+          },
           pods: k8sStatus.pods,
           resourceDefaults: deployment.recipe.resourceDefaults as Record<
             string,
@@ -423,12 +440,14 @@ export function getTools(tenantId: string, workspaceId: string) {
 
     updateService: tool({
       description:
-        "Update the configuration of a running service. Applies the new settings and restarts if needed.",
+        "Update the configuration of a running service. Use this to change resources (cpu_request, memory_request, cpu_limit, memory_limit), storage, or any other config field. Call getServiceDetail first to see current config and getRecipe to see available config options. Only include the fields you want to change — existing values are preserved.",
       inputSchema: z.object({
         deploymentId: z.string().describe("The deployment ID"),
         config: z
           .record(z.string(), z.unknown())
-          .describe("New configuration values")
+          .describe(
+            "Configuration values to update. Common fields: cpu_request (e.g. '100m'), memory_request (e.g. '256Mi'), cpu_limit (e.g. '500m'), memory_limit (e.g. '1Gi'). Only include fields you want to change."
+          )
       }),
       execute: async ({ deploymentId, config }) => {
         try {

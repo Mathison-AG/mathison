@@ -20,7 +20,7 @@ export async function GET() {
     }
 
     const deployments = await prisma.deployment.findMany({
-      where: { workspaceId: workspace.id },
+      where: { workspaceId: workspace.id, status: { not: "STOPPED" } },
       include: {
         recipe: {
           select: {
@@ -46,7 +46,8 @@ export async function GET() {
         iconUrl: d.recipe.iconUrl || `/icons/${d.recipe.slug}.svg`,
         status: d.status,
         url: d.url,
-        category: d.recipe.category
+        appVersion: d.appVersion,
+        category: d.recipe.category,
       }
     }));
 

@@ -7,12 +7,36 @@
 
 import Handlebars from "handlebars";
 
+// ─── Register custom Handlebars helpers ───────────────────
+
+/** Block helper: {{#eq a b}}...{{else}}...{{/eq}} */
+Handlebars.registerHelper(
+  "eq",
+  function (
+    this: unknown,
+    a: unknown,
+    b: unknown,
+    options: Handlebars.HelperOptions
+  ) {
+    if (a === b) {
+      return options.fn(this);
+    }
+    return options.inverse(this);
+  }
+);
+
 // ─── Template context types ───────────────────────────────
 
+/**
+ * Dependency connection info for template rendering.
+ * All properties are top-level for easy access in templates:
+ *   {{deps.n8n-db.host}}, {{deps.n8n-db.database}}, {{deps.n8n-db.password}}
+ */
 export interface DependencyInfo {
   host: string;
   port: number;
-  credentials: Record<string, string>;
+  /** Additional properties (database, username, password, etc.) */
+  [key: string]: string | number;
 }
 
 export interface TemplateContext {
@@ -27,6 +51,13 @@ export interface TemplateContext {
     domain: string;
     tlsEnabled: boolean;
     clusterIssuer: string;
+  };
+  /** Cluster-level settings used in values templates (ingress, TLS, domain) */
+  cluster: {
+    domain: string;
+    ingress_class: string;
+    ingress_enabled: boolean;
+    tls_cluster_issuer: string;
   };
 }
 
@@ -53,7 +84,7 @@ export function renderValuesTemplate(
   try {
     const compiled = Handlebars.compile(template, {
       noEscape: true, // Don't HTML-escape values in YAML
-      strict: false,  // Don't throw on missing variables
+      strict: false // Don't throw on missing variables
     });
 
     return compiled(context);
@@ -80,7 +111,7 @@ export function buildTemplateContext(params: {
   // Merge user config with defaults (user values take precedence)
   const mergedConfig: Record<string, unknown> = {
     ...params.configDefaults,
-    ...params.config,
+    ...params.config
   };
 
   return {
@@ -89,12 +120,18 @@ export function buildTemplateContext(params: {
     deps: params.deps,
     tenant: {
       slug: params.tenantSlug,
-      namespace: params.tenantNamespace,
+      namespace: params.tenantNamespace
     },
     platform: {
-      domain: process.env.MATHISON_BASE_DOMAIN || "localhost:3000",
+      domain: process.env.MATHISON_BASE_DOMAIN || "localhost",
       tlsEnabled: process.env.TLS_ENABLED === "true",
-      clusterIssuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod",
+      clusterIssuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod"
     },
+    cluster: {
+      domain: process.env.MATHISON_BASE_DOMAIN || "localhost",
+      ingress_class: process.env.INGRESS_CLASS || "nginx",
+      ingress_enabled: process.env.INGRESS_ENABLED === "true",
+      tls_cluster_issuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod"
+    }
   };
 }

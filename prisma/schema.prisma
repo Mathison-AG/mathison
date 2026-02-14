@@ -186,6 +186,9 @@ model Deployment {
   secretsRef    String?          @map("secrets_ref")
   status        DeploymentStatus @default(PENDING)
   url           String?
+  chartVersion  String?          @map("chart_version")  // e.g. "postgresql-16.2.5"
+  appVersion    String?          @map("app_version")    // e.g. "16.2.0"
+  revision      Int              @default(1)            // Helm revision number
   errorMessage  String?          @map("error_message")
   dependsOn     String[]         @map("depends_on") // Deployment IDs
   createdAt     DateTime         @default(now()) @map("created_at")

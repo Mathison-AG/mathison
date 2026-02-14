@@ -11,7 +11,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { getRecipe } from "@/lib/catalog/service";
-import { generateSecrets, createK8sSecret } from "./secrets";
+import { generateSecrets, createK8sSecret, readK8sSecret } from "./secrets";
 import { renderValuesTemplate, buildTemplateContext } from "./template";
 import { deploymentQueue } from "@/lib/queue/queues";
 import { JOB_NAMES } from "@/lib/queue/jobs";
@@ -36,7 +36,19 @@ const DEFAULT_PORTS: Record<string, number> = {
   redis: 6379,
   mysql: 3306,
   mongodb: 27017,
-  minio: 9000,
+  minio: 9000
+};
+
+/**
+ * Bitnami (and other) charts append a suffix to the Helm release name
+ * for the K8s Service. Map chart types to their service name suffix.
+ */
+const SERVICE_NAME_SUFFIXES: Record<string, string> = {
+  postgresql: "-postgresql",
+  redis: "-redis-master",
+  mysql: "-mysql",
+  mongodb: "-mongodb",
+  minio: "-minio"
 };
 
 // ─── Dependency resolution ────────────────────────────────
@@ -55,7 +67,8 @@ export async function resolveDependencies(params: {
   workspaceNamespace: string;
   recipe: Recipe;
 }): Promise<ResolvedDependencies> {
-  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, recipe } = params;
+  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, recipe } =
+    params;
 
   if (!recipe.dependencies || recipe.dependencies.length === 0) {
     return { resolved: {}, newDeploymentIds: [] };
@@ -70,24 +83,36 @@ export async function resolveDependencies(params: {
     // 1. Check if already deployed in this workspace
     const existing = await prisma.deployment.findUnique({
       where: {
-        workspaceId_name: { workspaceId, name: depKey },
+        workspaceId_name: { workspaceId, name: depKey }
       },
       select: {
         id: true,
         helmRelease: true,
         config: true,
         secretsRef: true,
-        status: true,
-      },
+        status: true
+      }
     });
 
-    if (existing && existing.status !== "STOPPED" && existing.status !== "FAILED") {
-      // Dependency already deployed — extract connection info
+    if (
+      existing &&
+      existing.status !== "STOPPED" &&
+      existing.status !== "FAILED"
+    ) {
+      // Dependency already deployed — extract connection info including secrets from K8s
+      let existingSecrets: Record<string, string> = {};
+      if (existing.secretsRef) {
+        existingSecrets = await readK8sSecret(
+          workspaceNamespace,
+          existing.secretsRef
+        );
+      }
       resolved[depKey] = buildConnectionInfo(
         dep,
         existing.helmRelease,
         workspaceNamespace,
-        (existing.config ?? {}) as Record<string, unknown>
+        (existing.config ?? {}) as Record<string, unknown>,
+        existingSecrets
       );
       continue;
     }
@@ -106,7 +131,7 @@ export async function resolveDependencies(params: {
       workspaceSlug,
       workspaceNamespace,
       dep,
-      depRecipe,
+      depRecipe
     });
 
     resolved[depKey] = depResult.connectionInfo;
@@ -114,6 +139,70 @@ export async function resolveDependencies(params: {
   }
 
   return { resolved, newDeploymentIds };
+}
+
+// ─── Resolve existing dependencies (for upgrades) ────────
+
+/**
+ * Resolve existing dependencies for a deployment upgrade.
+ * Unlike resolveDependencies(), this does NOT auto-deploy missing deps —
+ * it only looks up existing dependency deployments and builds connection
+ * info including secrets read from K8s.
+ *
+ * Used when upgrading a deployment so the values template can render
+ * dependency placeholders (e.g. {{deps.n8n-db.host}}) correctly.
+ */
+export async function resolveExistingDependencies(params: {
+  workspaceId: string;
+  workspaceNamespace: string;
+  dependencies: RecipeDependency[];
+}): Promise<Record<string, DependencyInfo>> {
+  const { workspaceId, workspaceNamespace, dependencies } = params;
+
+  if (!dependencies || dependencies.length === 0) {
+    return {};
+  }
+
+  const resolved: Record<string, DependencyInfo> = {};
+
+  for (const dep of dependencies) {
+    const depKey = dep.alias || dep.service;
+
+    // Look up the existing dependency deployment in this workspace
+    const existing = await prisma.deployment.findUnique({
+      where: {
+        workspaceId_name: { workspaceId, name: depKey },
+      },
+      select: {
+        helmRelease: true,
+        config: true,
+        secretsRef: true,
+      },
+    });
+
+    if (!existing) {
+      console.warn(
+        `[dependencies] Dependency '${depKey}' not found in workspace during upgrade — skipping`
+      );
+      continue;
+    }
+
+    // Read secrets from K8s so templates can access credentials (e.g. password)
+    let secrets: Record<string, string> = {};
+    if (existing.secretsRef) {
+      secrets = await readK8sSecret(workspaceNamespace, existing.secretsRef);
+    }
+
+    resolved[depKey] = buildConnectionInfo(
+      dep,
+      existing.helmRelease,
+      workspaceNamespace,
+      (existing.config ?? {}) as Record<string, unknown>,
+      secrets
+    );
+  }
+
+  return resolved;
 }
 
 // ─── Auto-deploy a single dependency ──────────────────────
@@ -126,7 +215,14 @@ async function deployDependency(params: {
   dep: RecipeDependency;
   depRecipe: Recipe;
 }): Promise<{ deploymentId: string; connectionInfo: DependencyInfo }> {
-  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, dep, depRecipe } = params;
+  const {
+    tenantId,
+    workspaceId,
+    workspaceSlug,
+    workspaceNamespace,
+    dep,
+    depRecipe
+  } = params;
 
   const depName = dep.alias || dep.service;
   const helmRelease = `${workspaceSlug}-${depName}`;
@@ -145,7 +241,10 @@ async function deployDependency(params: {
     try {
       await createK8sSecret(workspaceNamespace, secretsRef, secrets);
     } catch (err) {
-      console.error(`[dependencies] Failed to create K8s secret for '${depName}':`, err);
+      console.error(
+        `[dependencies] Failed to create K8s secret for '${depName}':`,
+        err
+      );
       // Continue anyway — Helm values will have the secrets inline
     }
   }
@@ -160,7 +259,7 @@ async function deployDependency(params: {
     secrets,
     deps: {}, // Dependencies of dependencies (for now, don't go deeper)
     tenantSlug: workspaceSlug,
-    tenantNamespace: workspaceNamespace,
+    tenantNamespace: workspaceNamespace
   });
 
   const renderedValues = renderValuesTemplate(
@@ -180,8 +279,8 @@ async function deployDependency(params: {
       helmRelease,
       config: depConfig as unknown as Prisma.InputJsonValue,
       secretsRef,
-      status: "PENDING",
-    },
+      status: "PENDING"
+    }
   });
 
   // Queue deploy job
@@ -192,24 +291,25 @@ async function deployDependency(params: {
     chartUrl: depRecipe.chartUrl,
     chartVersion: depRecipe.chartVersion ?? undefined,
     tenantNamespace: workspaceNamespace,
-    renderedValues,
+    renderedValues
   };
 
   await deploymentQueue.add(JOB_NAMES.DEPLOY, jobData, {
     jobId: `deploy-${deployment.id}`,
-    priority: 1, // Dependencies get higher priority
+    priority: 1 // Dependencies get higher priority
   });
 
   console.log(
     `[dependencies] Auto-deployed dependency '${depName}' (${depRecipe.displayName}) → job queued`
   );
 
-  // Build connection info
+  // Build connection info (include secrets so parent can access e.g. password)
   const connectionInfo = buildConnectionInfo(
     dep,
     helmRelease,
     workspaceNamespace,
-    depConfig
+    depConfig,
+    secrets
   );
 
   return { deploymentId: deployment.id, connectionInfo };
@@ -220,25 +320,39 @@ async function deployDependency(params: {
 /**
  * Build connection info for a dependency (used in template rendering).
  * The host is the K8s service DNS name within the namespace.
+ *
+ * All config and secret values are flattened into the top level so
+ * templates can access them directly: {{deps.n8n-db.database}}, {{deps.n8n-db.password}}
  */
 function buildConnectionInfo(
   dep: RecipeDependency,
   helmRelease: string,
   namespace: string,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  secrets: Record<string, string> = {}
 ): DependencyInfo {
   const port = DEFAULT_PORTS[dep.service] ?? 5432;
 
-  // K8s service DNS: <release-name>.<namespace>.svc.cluster.local
-  // For bitnami charts, the service name is usually the release name
-  const host = `${helmRelease}.${namespace}.svc.cluster.local`;
+  // Bitnami charts append chart name to the service (e.g. release-postgresql)
+  const suffix = SERVICE_NAME_SUFFIXES[dep.service] ?? "";
+  const host = `${helmRelease}${suffix}.${namespace}.svc.cluster.local`;
 
-  // Extract credentials from config (these will also be in secrets)
-  const credentials: Record<string, string> = {};
-  if (config.username) credentials.username = String(config.username);
-  if (config.database) credentials.database = String(config.database);
+  // Start with host + port, then spread config and secrets for flat access
+  const info: DependencyInfo = { host, port };
 
-  return { host, port, credentials };
+  // Add config values (database, username, etc.)
+  for (const [k, v] of Object.entries(config)) {
+    if (typeof v === "string" || typeof v === "number") {
+      info[k] = v;
+    }
+  }
+
+  // Add secrets (password, etc.) — these override config if same key
+  for (const [k, v] of Object.entries(secrets)) {
+    info[k] = v;
+  }
+
+  return info;
 }
 
 /**

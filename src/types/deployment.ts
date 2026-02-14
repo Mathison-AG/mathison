@@ -9,6 +9,9 @@ export interface Deployment {
   helmRelease: string;
   status: DeploymentStatus;
   url: string | null;
+  chartVersion: string | null;
+  appVersion: string | null;
+  revision: number;
   errorMessage: string | null;
   config: Record<string, unknown>;
   dependsOn: string[];
@@ -29,3 +32,30 @@ export interface DeploymentDetail extends Deployment {
   recipeVersion: number;
   secretsRef: string | null;
 }
+
+// ─── Resource config helpers ──────────────────────────────
+
+export interface ResourceConfig {
+  cpuRequest: string | null;
+  cpuLimit: string | null;
+  memoryRequest: string | null;
+  memoryLimit: string | null;
+}
+
+/** Extract resource config from deployment.config */
+export function extractResources(config: Record<string, unknown>): ResourceConfig {
+  return {
+    cpuRequest: (config.cpu_request as string) ?? null,
+    cpuLimit: (config.cpu_limit as string) ?? null,
+    memoryRequest: (config.memory_request as string) ?? null,
+    memoryLimit: (config.memory_limit as string) ?? null,
+  };
+}
+
+/** Config keys that represent resources (excluded from general config display) */
+export const RESOURCE_CONFIG_KEYS = new Set([
+  "cpu_request",
+  "cpu_limit",
+  "memory_request",
+  "memory_limit",
+]);

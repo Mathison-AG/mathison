@@ -5,7 +5,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink, Trash2, Calendar, Box } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Trash2,
+  Calendar,
+  Box,
+  Cpu,
+  MemoryStick,
+  Tag,
+  Hash,
+  Globe,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,13 +31,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 import { StatusBadge } from "./status-badge";
 import { LogViewer } from "./log-viewer";
 
 import type { DeploymentDetail as DeploymentDetailType } from "@/types/deployment";
+import { extractResources, RESOURCE_CONFIG_KEYS } from "@/types/deployment";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -36,8 +48,16 @@ function formatDate(dateStr: string): string {
     month: "short",
     day: "numeric",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   });
+}
+
+/** Pretty-print config key: cpu_request → CPU Request */
+function formatConfigKey(key: string): string {
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 // ─── Component ────────────────────────────────────────────
@@ -55,15 +75,23 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
     deployment.recipe.iconUrl || `/icons/${deployment.recipe.slug}.svg`;
 
   const config = deployment.config as Record<string, unknown>;
+  const resources = extractResources(config);
+  const hasResources =
+    resources.cpuRequest ||
+    resources.cpuLimit ||
+    resources.memoryRequest ||
+    resources.memoryLimit;
+
+  // Config entries excluding resource keys (shown separately)
   const configEntries = Object.entries(config).filter(
-    ([, v]) => v !== undefined && v !== null
+    ([key, v]) => v !== undefined && v !== null && !RESOURCE_CONFIG_KEYS.has(key)
   );
 
   async function handleRemove() {
     setIsDeleting(true);
     try {
       const res = await fetch(`/api/deployments/${deployment.id}`, {
-        method: "DELETE"
+        method: "DELETE",
       });
 
       if (!res.ok) {
@@ -110,9 +138,20 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold">{deployment.name}</h1>
             <StatusBadge status={deployment.status} />
+            {deployment.appVersion && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                <Tag className="size-3" />
+                v{deployment.appVersion}
+              </span>
+            )}
           </div>
           <p className="text-muted-foreground">
             {deployment.recipe.displayName}
+            {deployment.chartVersion && (
+              <span className="text-xs ml-2 text-muted-foreground/70">
+                ({deployment.chartVersion})
+              </span>
+            )}
           </p>
           {deployment.url && (
             <a
@@ -178,6 +217,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
 
         {/* Overview tab */}
         <TabsContent value="overview" className="space-y-4">
+          {/* Row 1: Details + Version/URL info */}
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Details card */}
             <Card className="p-5 space-y-4">
@@ -192,6 +232,24 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                   value={deployment.recipe.category}
                   className="capitalize"
                 />
+                {deployment.appVersion && (
+                  <DetailRow
+                    label="Version"
+                    value={`v${deployment.appVersion}`}
+                    icon={<Tag className="size-3" />}
+                  />
+                )}
+                {deployment.chartVersion && (
+                  <DetailRow
+                    label="Chart"
+                    value={deployment.chartVersion}
+                  />
+                )}
+                <DetailRow
+                  label="Revision"
+                  value={`#${deployment.revision}`}
+                  icon={<Hash className="size-3" />}
+                />
                 <DetailRow
                   label="Created"
                   value={formatDate(deployment.createdAt)}
@@ -202,6 +260,14 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                   value={formatDate(deployment.updatedAt)}
                   icon={<Calendar className="size-3" />}
                 />
+                {deployment.url && (
+                  <DetailRow
+                    label="URL"
+                    value={deployment.url}
+                    icon={<Globe className="size-3" />}
+                    isLink
+                  />
+                )}
                 {deployment.errorMessage && (
                   <div>
                     <p className="text-xs text-muted-foreground">Error</p>
@@ -213,31 +279,81 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
               </div>
             </Card>
 
-            {/* Config card */}
-            {configEntries.length > 0 && (
+            {/* Resources card */}
+            {hasResources && (
               <Card className="p-5 space-y-4">
                 <div className="flex items-center gap-2">
-                  <Box className="size-4 text-muted-foreground" />
-                  <h2 className="font-semibold">Configuration</h2>
+                  <Cpu className="size-4 text-muted-foreground" />
+                  <h2 className="font-semibold">Resources</h2>
                 </div>
-                <div className="space-y-2 text-sm">
-                  {configEntries.map(([key, value]) => (
-                    <div
-                      key={key}
-                      className="flex items-center justify-between gap-4"
-                    >
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {key}
-                      </span>
-                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[200px]">
-                        {String(value)}
-                      </code>
+                <div className="space-y-4">
+                  {/* CPU */}
+                  {(resources.cpuRequest || resources.cpuLimit) && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        <Cpu className="size-3" />
+                        CPU
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <ResourceBox
+                          label="Request"
+                          value={resources.cpuRequest}
+                        />
+                        <ResourceBox
+                          label="Limit"
+                          value={resources.cpuLimit}
+                        />
+                      </div>
                     </div>
-                  ))}
+                  )}
+                  {/* Memory */}
+                  {(resources.memoryRequest || resources.memoryLimit) && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        <MemoryStick className="size-3" />
+                        Memory
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <ResourceBox
+                          label="Request"
+                          value={resources.memoryRequest}
+                        />
+                        <ResourceBox
+                          label="Limit"
+                          value={resources.memoryLimit}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Card>
             )}
           </div>
+
+          {/* Row 2: Configuration (non-resource keys) */}
+          {configEntries.length > 0 && (
+            <Card className="p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Box className="size-4 text-muted-foreground" />
+                <h2 className="font-semibold">Configuration</h2>
+              </div>
+              <div className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+                {configEntries.map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    <span className="text-muted-foreground text-xs">
+                      {formatConfigKey(key)}
+                    </span>
+                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded truncate max-w-[200px]">
+                      {String(value)}
+                    </code>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Logs tab */}
@@ -264,20 +380,55 @@ function DetailRow({
   label,
   value,
   icon,
-  className
+  className,
+  isLink,
 }: {
   label: string;
   value: string;
   icon?: React.ReactNode;
   className?: string;
+  isLink?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="text-muted-foreground">{label}</span>
-      <span className={`flex items-center gap-1 ${className || ""}`}>
-        {icon}
-        {value}
-      </span>
+      {isLink ? (
+        <a
+          href={value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-primary hover:underline truncate max-w-[220px]"
+        >
+          {icon}
+          <span className="truncate">{value}</span>
+        </a>
+      ) : (
+        <span className={`flex items-center gap-1 ${className || ""}`}>
+          {icon}
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── Resource Box ─────────────────────────────────────────
+
+function ResourceBox({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div className="rounded-lg border bg-muted/50 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+        {label}
+      </p>
+      <p className="text-sm font-mono font-medium">
+        {value || <span className="text-muted-foreground/50">—</span>}
+      </p>
     </div>
   );
 }

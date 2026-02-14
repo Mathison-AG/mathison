@@ -24,7 +24,7 @@ const postgresql: RecipeCreateInput = {
   iconUrl: undefined,
   sourceType: "helm",
   chartUrl: "oci://registry-1.docker.io/bitnamicharts/postgresql",
-  chartVersion: "16.6.3",
+  chartVersion: undefined, // Use latest — pinned versions reference Docker tags that get removed
   configSchema: {
     version: {
       type: "select",
@@ -58,6 +58,30 @@ const postgresql: RecipeCreateInput = {
       max: 500,
       label: "Max Connections",
       description: "Maximum number of concurrent connections"
+    },
+    cpu_request: {
+      type: "string",
+      default: "50m",
+      label: "CPU Request",
+      description: "CPU request (e.g. 50m, 100m, 250m)"
+    },
+    memory_request: {
+      type: "string",
+      default: "128Mi",
+      label: "Memory Request",
+      description: "Memory request (e.g. 128Mi, 256Mi, 512Mi)"
+    },
+    cpu_limit: {
+      type: "string",
+      default: "250m",
+      label: "CPU Limit",
+      description: "CPU limit (e.g. 250m, 500m, 1000m)"
+    },
+    memory_limit: {
+      type: "string",
+      default: "256Mi",
+      label: "Memory Limit",
+      description: "Memory limit (e.g. 256Mi, 512Mi, 1Gi)"
     }
   },
   secretsSchema: {
@@ -79,11 +103,11 @@ primary:
     max_connections = {{config.max_connections}}
   resources:
     requests:
-      cpu: 50m
-      memory: 128Mi
+      cpu: "{{config.cpu_request}}"
+      memory: "{{config.memory_request}}"
     limits:
-      cpu: 250m
-      memory: 256Mi
+      cpu: "{{config.cpu_limit}}"
+      memory: "{{config.memory_limit}}"
   persistence:
     enabled: true
     size: "{{config.storage_size}}"
@@ -119,7 +143,7 @@ const redis: RecipeCreateInput = {
   iconUrl: undefined,
   sourceType: "helm",
   chartUrl: "oci://registry-1.docker.io/bitnamicharts/redis",
-  chartVersion: "20.11.4",
+  chartVersion: undefined, // Use latest — pinned versions reference Docker tags that get removed
   configSchema: {
     version: {
       type: "select",
@@ -146,6 +170,30 @@ const redis: RecipeCreateInput = {
       default: "allkeys-lru",
       label: "Eviction Policy",
       description: "What to do when max memory is reached"
+    },
+    cpu_request: {
+      type: "string",
+      default: "25m",
+      label: "CPU Request",
+      description: "CPU request (e.g. 25m, 50m, 100m)"
+    },
+    memory_request: {
+      type: "string",
+      default: "64Mi",
+      label: "Memory Request",
+      description: "Memory request (e.g. 64Mi, 128Mi, 256Mi)"
+    },
+    cpu_limit: {
+      type: "string",
+      default: "100m",
+      label: "CPU Limit",
+      description: "CPU limit (e.g. 100m, 250m, 500m)"
+    },
+    memory_limit: {
+      type: "string",
+      default: "128Mi",
+      label: "Memory Limit",
+      description: "Memory limit (e.g. 128Mi, 256Mi, 512Mi)"
     }
   },
   secretsSchema: {
@@ -167,11 +215,11 @@ master:
     maxmemory-policy {{config.maxmemory_policy}}
   resources:
     requests:
-      cpu: 25m
-      memory: 64Mi
+      cpu: "{{config.cpu_request}}"
+      memory: "{{config.memory_request}}"
     limits:
-      cpu: 100m
-      memory: 128Mi
+      cpu: "{{config.cpu_limit}}"
+      memory: "{{config.memory_limit}}"
   persistence:
     enabled: true
     size: "{{config.storage_size}}"
@@ -217,7 +265,7 @@ const n8n: RecipeCreateInput = {
   iconUrl: undefined,
   sourceType: "helm",
   chartUrl: "oci://8gears.container-registry.com/library/n8n",
-  chartVersion: "0.26.1",
+  chartVersion: undefined, // Use latest — major version jump from 0.26.x to 2.x
   configSchema: {
     execution_mode: {
       type: "select",
@@ -226,6 +274,30 @@ const n8n: RecipeCreateInput = {
       label: "Execution Mode",
       description:
         "Regular: single process. Queue: separate workers for scalability."
+    },
+    cpu_request: {
+      type: "string",
+      default: "50m",
+      label: "CPU Request",
+      description: "CPU request (e.g. 50m, 100m, 250m)"
+    },
+    memory_request: {
+      type: "string",
+      default: "256Mi",
+      label: "Memory Request",
+      description: "Memory request (e.g. 256Mi, 512Mi, 1Gi)"
+    },
+    cpu_limit: {
+      type: "string",
+      default: "500m",
+      label: "CPU Limit",
+      description: "CPU limit (e.g. 500m, 1000m, 2000m)"
+    },
+    memory_limit: {
+      type: "string",
+      default: "512Mi",
+      label: "Memory Limit",
+      description: "Memory limit (e.g. 512Mi, 1Gi, 2Gi)"
     }
   },
   secretsSchema: {
@@ -237,32 +309,29 @@ const n8n: RecipeCreateInput = {
   },
   valuesTemplate: `main:
   config:
-    n8n:
-      port: 5678
     db:
       type: postgresdb
       postgresdb:
-        host: "{{deps.postgresql.host}}"
+        host: "{{deps.n8n-db.host}}"
         port: 5432
-        database: "{{deps.postgresql.database}}"
-        user: "{{deps.postgresql.username}}"
+        database: "{{deps.n8n-db.database}}"
+        user: "{{deps.n8n-db.username}}"
         schema: public
   secret:
     n8n:
       encryption_key: "{{secrets.encryption_key}}"
     db:
       postgresdb:
-        password: "{{deps.postgresql.password}}"
+        password: "{{deps.n8n-db.password}}"
+  persistence:
+    enabled: false
   resources:
     requests:
-      cpu: 50m
-      memory: 256Mi
+      cpu: "{{config.cpu_request}}"
+      memory: "{{config.memory_request}}"
     limits:
-      cpu: 500m
-      memory: 512Mi
-
-persistence:
-  enabled: false
+      cpu: "{{config.cpu_limit}}"
+      memory: "{{config.memory_limit}}"
 
 worker:
   enabled: {{#eq config.execution_mode "queue"}}true{{else}}false{{/eq}}
@@ -270,6 +339,10 @@ worker:
 webhook:
   enabled: false
 
+valkey:
+  enabled: false
+
+{{#if cluster.ingress_enabled}}
 ingress:
   enabled: true
   className: "{{cluster.ingress_class}}"
@@ -283,7 +356,11 @@ ingress:
   tls:
     - secretName: n8n-tls
       hosts:
-        - "n8n-{{tenant.slug}}.{{cluster.domain}}"`,
+        - "n8n-{{tenant.slug}}.{{cluster.domain}}"
+{{else}}
+ingress:
+  enabled: false
+{{/if}}`,
   dependencies: [
     {
       service: "postgresql",
@@ -333,6 +410,30 @@ const uptimeKuma: RecipeCreateInput = {
       default: "2Gi",
       label: "Storage Size",
       description: "Persistent volume size for SQLite database"
+    },
+    cpu_request: {
+      type: "string",
+      default: "25m",
+      label: "CPU Request",
+      description: "CPU request (e.g. 25m, 50m, 100m)"
+    },
+    memory_request: {
+      type: "string",
+      default: "64Mi",
+      label: "Memory Request",
+      description: "Memory request (e.g. 64Mi, 128Mi, 256Mi)"
+    },
+    cpu_limit: {
+      type: "string",
+      default: "150m",
+      label: "CPU Limit",
+      description: "CPU limit (e.g. 150m, 250m, 500m)"
+    },
+    memory_limit: {
+      type: "string",
+      default: "200Mi",
+      label: "Memory Limit",
+      description: "Memory limit (e.g. 200Mi, 512Mi, 1Gi)"
     }
   },
   secretsSchema: {},
@@ -342,11 +443,11 @@ const uptimeKuma: RecipeCreateInput = {
 
 resources:
   requests:
-    cpu: 25m
-    memory: 64Mi
+    cpu: "{{config.cpu_request}}"
+    memory: "{{config.memory_request}}"
   limits:
-    cpu: 150m
-    memory: 200Mi
+    cpu: "{{config.cpu_limit}}"
+    memory: "{{config.memory_limit}}"
 
 persistence:
   enabled: true
@@ -354,6 +455,7 @@ persistence:
   accessModes:
     - ReadWriteOnce
 
+{{#if cluster.ingress_enabled}}
 ingress:
   enabled: true
   className: "{{cluster.ingress_class}}"
@@ -367,7 +469,11 @@ ingress:
   tls:
     - secretName: uptime-kuma-tls
       hosts:
-        - "status-{{tenant.slug}}.{{cluster.domain}}"`,
+        - "status-{{tenant.slug}}.{{cluster.domain}}"
+{{else}}
+ingress:
+  enabled: false
+{{/if}}`,
   dependencies: [],
   ingressConfig: {
     enabled: true,
@@ -404,7 +510,7 @@ const minio: RecipeCreateInput = {
   iconUrl: undefined,
   sourceType: "helm",
   chartUrl: "oci://registry-1.docker.io/bitnamicharts/minio",
-  chartVersion: "14.12.2",
+  chartVersion: undefined, // Use latest — pinned versions reference Docker tags that get removed
   configSchema: {
     storage_size: {
       type: "string",
@@ -417,6 +523,30 @@ const minio: RecipeCreateInput = {
       default: "data",
       label: "Default Buckets",
       description: "Comma-separated list of buckets to create on startup"
+    },
+    cpu_request: {
+      type: "string",
+      default: "50m",
+      label: "CPU Request",
+      description: "CPU request (e.g. 50m, 100m, 250m)"
+    },
+    memory_request: {
+      type: "string",
+      default: "128Mi",
+      label: "Memory Request",
+      description: "Memory request (e.g. 128Mi, 256Mi, 512Mi)"
+    },
+    cpu_limit: {
+      type: "string",
+      default: "500m",
+      label: "CPU Limit",
+      description: "CPU limit (e.g. 500m, 1000m, 2000m)"
+    },
+    memory_limit: {
+      type: "string",
+      default: "512Mi",
+      label: "Memory Limit",
+      description: "Memory limit (e.g. 512Mi, 1Gi, 2Gi)"
     }
   },
   secretsSchema: {
@@ -441,11 +571,11 @@ defaultBuckets: "{{config.default_buckets}}"
 
 resources:
   requests:
-    cpu: 50m
-    memory: 128Mi
+    cpu: "{{config.cpu_request}}"
+    memory: "{{config.memory_request}}"
   limits:
-    cpu: 500m
-    memory: 512Mi
+    cpu: "{{config.cpu_limit}}"
+    memory: "{{config.memory_limit}}"
 
 persistence:
   enabled: true
@@ -453,6 +583,7 @@ persistence:
   accessModes:
     - ReadWriteOnce
 
+{{#if cluster.ingress_enabled}}
 ingress:
   enabled: true
   ingressClassName: "{{cluster.ingress_class}}"
@@ -467,7 +598,14 @@ apiIngress:
   annotations:
     cert-manager.io/cluster-issuer: "{{cluster.tls_cluster_issuer}}"
   hostname: "s3-{{tenant.slug}}.{{cluster.domain}}"
-  tls: true`,
+  tls: true
+{{else}}
+ingress:
+  enabled: false
+
+apiIngress:
+  enabled: false
+{{/if}}`,
   dependencies: [],
   ingressConfig: {
     enabled: true,

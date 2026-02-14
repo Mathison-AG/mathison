@@ -11,17 +11,17 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { getRecipe } from "@/lib/catalog/service";
-import { generateSecrets, createK8sSecret } from "./secrets";
+import { generateSecrets, createK8sSecret, readK8sSecret } from "./secrets";
 import {
   renderValuesTemplate,
   buildTemplateContext,
 } from "./template";
-import { resolveDependencies } from "./dependencies";
+import { resolveDependencies, resolveExistingDependencies } from "./dependencies";
 import { deploymentQueue } from "@/lib/queue/queues";
 import { JOB_NAMES } from "@/lib/queue/jobs";
 
 import type { DeployJobData, UndeployJobData, UpgradeJobData } from "@/lib/queue/jobs";
-import type { ConfigSchema } from "@/types/recipe";
+import type { ConfigSchema, RecipeDependency } from "@/types/recipe";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -185,6 +185,7 @@ export async function initiateDeployment(params: {
 
 /**
  * Upgrade an existing deployment with new configuration.
+ * Properly resolves existing dependencies and reuses secrets from K8s.
  */
 export async function initiateUpgrade(params: {
   tenantId: string;
@@ -196,7 +197,14 @@ export async function initiateUpgrade(params: {
   const deployment = await prisma.deployment.findFirst({
     where: { id: deploymentId, tenantId },
     include: {
-      workspace: { select: { slug: true, namespace: true, tenant: { select: { slug: true } } } },
+      workspace: {
+        select: {
+          id: true,
+          slug: true,
+          namespace: true,
+          tenant: { select: { slug: true } },
+        },
+      },
       recipe: {
         select: {
           slug: true,
@@ -218,23 +226,44 @@ export async function initiateUpgrade(params: {
 
   const tenantSlug = deployment.workspace.tenant.slug;
 
-  // Merge configs
+  // Merge configs (new values override existing)
   const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
   const mergedConfig = { ...existingConfig, ...config };
 
-  // Re-generate secrets (reuse existing)
-  const secretsSchema = deployment.recipe.secretsSchema as Record<string, { generate?: boolean; length?: number; description?: string }>;
-  const secrets = generateSecrets(secretsSchema);
+  // Reuse existing secrets from K8s — don't regenerate passwords/keys
+  const secretsSchema = deployment.recipe.secretsSchema as Record<
+    string,
+    { generate?: boolean; length?: number; description?: string }
+  >;
+  let existingSecrets: Record<string, string> = {};
+  if (deployment.secretsRef) {
+    existingSecrets = await readK8sSecret(
+      deployment.workspace.namespace,
+      deployment.secretsRef
+    );
+  }
+  const secrets = generateSecrets(secretsSchema, existingSecrets);
 
-  // Render new values
+  // Re-resolve existing dependencies so template placeholders render correctly
+  const recipeDeps = (deployment.recipe.dependencies ?? []) as unknown as RecipeDependency[];
+  const deps = await resolveExistingDependencies({
+    workspaceId: deployment.workspace.id,
+    workspaceNamespace: deployment.workspace.namespace,
+    dependencies: recipeDeps,
+  });
+
+  // Render new values with full context
   const configDefaults = extractConfigDefaults(
-    deployment.recipe.configSchema as Record<string, { type: string; default?: unknown }>
+    deployment.recipe.configSchema as Record<
+      string,
+      { type: string; default?: unknown }
+    >
   );
   const context = buildTemplateContext({
     config: mergedConfig,
     configDefaults,
     secrets,
-    deps: {}, // TODO: re-resolve deps for upgrades
+    deps,
     tenantSlug,
     tenantNamespace: deployment.workspace.namespace,
   });
@@ -267,7 +296,9 @@ export async function initiateUpgrade(params: {
     jobId: `upgrade-${deploymentId}-${Date.now()}`,
   });
 
-  console.log(`[engine] Upgrade queued for '${deployment.name}' (${deployment.recipe.displayName})`);
+  console.log(
+    `[engine] Upgrade queued for '${deployment.name}' (${deployment.recipe.displayName})`
+  );
 
   return {
     deploymentId,

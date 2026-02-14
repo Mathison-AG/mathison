@@ -280,10 +280,9 @@ export async function deleteWorkspace(
     // Continue with DB cleanup even if K8s fails
   }
 
-  // 5. Update DB: mark deployments as STOPPED, workspace as DELETED
-  await prisma.deployment.updateMany({
+  // 5. Delete deployment records — resources no longer exist in the cluster
+  await prisma.deployment.deleteMany({
     where: { workspaceId },
-    data: { status: "STOPPED" },
   });
 
   await prisma.workspace.update({

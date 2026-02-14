@@ -327,6 +327,115 @@ export async function addRepo(
   }
 }
 
+/**
+ * Recover a stuck Helm release (pending-install, pending-upgrade, pending-rollback).
+ * If the release is stuck:
+ *   - pending-install → uninstall (no good revision to rollback to)
+ *   - pending-upgrade/pending-rollback → rollback to last good revision
+ * Returns true if recovery was attempted, false if release is healthy or not found.
+ */
+export async function helmRecoverStuckRelease(
+  releaseName: string,
+  namespace: string
+): Promise<{ recovered: boolean; action: string }> {
+  try {
+    // Get release history to check state
+    const result = await execFileAsync(HELM_BIN, [
+      "history",
+      releaseName,
+      "--namespace",
+      namespace,
+      "--output",
+      "json",
+      "--max",
+      "5",
+    ], {
+      env: getHelmEnv(),
+      timeout: 30_000,
+    });
+
+    if (!result.stdout || result.stdout.trim() === "" || result.stdout.trim() === "[]") {
+      return { recovered: false, action: "none" };
+    }
+
+    const history = JSON.parse(result.stdout) as Array<{
+      revision: number;
+      status: string;
+      description?: string;
+    }>;
+
+    if (history.length === 0) {
+      return { recovered: false, action: "none" };
+    }
+
+    // Check the latest revision's status
+    const latest = history[history.length - 1];
+    if (!latest) {
+      return { recovered: false, action: "none" };
+    }
+    const status = latest.status.toLowerCase();
+
+    if (status === "pending-install") {
+      // No previous good revision — must uninstall
+      console.log(
+        `[helm] Release ${releaseName} is stuck in pending-install — uninstalling`
+      );
+      await helmUninstall(releaseName, namespace);
+      return { recovered: true, action: "uninstalled" };
+    }
+
+    if (
+      status === "pending-upgrade" ||
+      status === "pending-rollback"
+    ) {
+      // Find the last successful revision
+      const goodRevision = [...history]
+        .reverse()
+        .find((h) => h.status.toLowerCase() === "deployed");
+
+      if (goodRevision) {
+        console.log(
+          `[helm] Release ${releaseName} is stuck in ${status} — rolling back to revision ${goodRevision.revision}`
+        );
+        await execFileAsync(HELM_BIN, [
+          "rollback",
+          releaseName,
+          String(goodRevision.revision),
+          "--namespace",
+          namespace,
+          "--wait",
+          "--timeout",
+          "2m",
+        ], {
+          env: getHelmEnv(),
+          timeout: 180_000,
+        });
+        return { recovered: true, action: `rollback-to-${goodRevision.revision}` };
+      } else {
+        // No good revision — uninstall
+        console.log(
+          `[helm] Release ${releaseName} is stuck in ${status} with no good revision — uninstalling`
+        );
+        await helmUninstall(releaseName, namespace);
+        return { recovered: true, action: "uninstalled" };
+      }
+    }
+
+    // Release is in a healthy state (deployed, failed, etc.)
+    return { recovered: false, action: "none" };
+  } catch (err: unknown) {
+    // Release doesn't exist — nothing to recover
+    if (isHelmNotFound(err)) {
+      return { recovered: false, action: "none" };
+    }
+    console.warn(
+      `[helm] Failed to check/recover release ${releaseName}:`,
+      getErrorMessage(err)
+    );
+    return { recovered: false, action: "error" };
+  }
+}
+
 // ─── Parsing ──────────────────────────────────────────────
 
 interface HelmStatusJson {

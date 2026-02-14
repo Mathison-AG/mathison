@@ -14,6 +14,7 @@ import {
   helmInstall,
   helmUpgrade,
   helmUninstall,
+  helmRecoverStuckRelease,
   addRepo
 } from "../src/lib/cluster/helm";
 import { waitForReady, getIngressUrl } from "../src/lib/cluster/kubernetes";
@@ -86,6 +87,18 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     `[worker] Deploy: ${helmRelease} (${recipeSlug}) → ${tenantNamespace}`
   );
 
+  // Check if deployment record still exists (may have been deleted by undeploy)
+  const exists = await prisma.deployment.findUnique({
+    where: { id: deploymentId },
+    select: { id: true }
+  });
+  if (!exists) {
+    console.warn(
+      `[worker] Deploy skipped: deployment ${deploymentId} no longer exists in DB`
+    );
+    return;
+  }
+
   try {
     // 1. Update status → DEPLOYING
     await prisma.deployment.update({
@@ -96,6 +109,15 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
 
     // 2. Ensure Helm repo is configured
     await ensureHelmRepo(chartUrl);
+    await job.updateProgress(15);
+
+    // 2.5. Recover stuck release if one exists (e.g. from a previously interrupted deploy)
+    const recovery = await helmRecoverStuckRelease(helmRelease, tenantNamespace);
+    if (recovery.recovered) {
+      console.log(
+        `[worker] Recovered stuck release ${helmRelease}: ${recovery.action}`
+      );
+    }
     await job.updateProgress(20);
 
     // 3. Run helm install
@@ -133,23 +155,32 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     }
 
     // 6. Update status → RUNNING (or FAILED if pods aren't ready)
+    // Include chart/app version and revision from Helm result
+    const versionData = {
+      chartVersion: result.chart !== "unknown" ? result.chart : null,
+      appVersion: result.appVersion !== "unknown" ? result.appVersion : null,
+      revision: parseInt(result.revision, 10) || 1,
+    };
+
     if (ready) {
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
           url,
-          errorMessage: null
+          errorMessage: null,
+          ...versionData,
         }
       });
-      console.log(`[worker] Deploy SUCCESS: ${helmRelease} is RUNNING`);
+      console.log(`[worker] Deploy SUCCESS: ${helmRelease} is RUNNING (chart: ${versionData.chartVersion}, app: ${versionData.appVersion})`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Service deployed but not yet healthy: ${podStatuses}`
+          errorMessage: `Service deployed but not yet healthy: ${podStatuses}`,
+          ...versionData,
         }
       });
       console.warn(
@@ -178,6 +209,24 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
   const { deploymentId, helmRelease, tenantNamespace } = job.data;
 
   console.log(`[worker] Undeploy: ${helmRelease} from ${tenantNamespace}`);
+
+  // Check if deployment record still exists (idempotent — may have been deleted already)
+  const exists = await prisma.deployment.findUnique({
+    where: { id: deploymentId },
+    select: { id: true }
+  });
+  if (!exists) {
+    console.warn(
+      `[worker] Undeploy: deployment ${deploymentId} already gone from DB — attempting Helm cleanup only`
+    );
+    // Still try to uninstall the Helm release in case it's orphaned
+    try {
+      await helmUninstall(helmRelease, tenantNamespace);
+    } catch {
+      // Ignore — release may not exist either
+    }
+    return;
+  }
 
   try {
     // 1. Update status → DELETING
@@ -209,17 +258,12 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
     }
     await job.updateProgress(80);
 
-    // 4. Update status → STOPPED
-    await prisma.deployment.update({
+    // 4. Delete the deployment record — resource no longer exists in the cluster
+    await prisma.deployment.delete({
       where: { id: deploymentId },
-      data: {
-        status: "STOPPED",
-        url: null,
-        errorMessage: null
-      }
     });
 
-    console.log(`[worker] Undeploy SUCCESS: ${helmRelease} removed`);
+    console.log(`[worker] Undeploy SUCCESS: ${helmRelease} removed (record deleted)`);
     await job.updateProgress(100);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -249,6 +293,18 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
 
   console.log(`[worker] Upgrade: ${helmRelease} in ${tenantNamespace}`);
 
+  // Check if deployment record still exists (may have been deleted by undeploy)
+  const exists = await prisma.deployment.findUnique({
+    where: { id: deploymentId },
+    select: { id: true }
+  });
+  if (!exists) {
+    console.warn(
+      `[worker] Upgrade skipped: deployment ${deploymentId} no longer exists in DB`
+    );
+    return;
+  }
+
   try {
     // 1. Update status → DEPLOYING
     await prisma.deployment.update({
@@ -259,21 +315,34 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
 
     // 2. Ensure Helm repo
     await ensureHelmRepo(chartUrl);
+    await job.updateProgress(15);
+
+    // 2.5. Recover stuck release if one exists (e.g. from a previously interrupted upgrade)
+    const recovery = await helmRecoverStuckRelease(helmRelease, tenantNamespace);
+    if (recovery.recovered) {
+      console.log(
+        `[worker] Recovered stuck release ${helmRelease}: ${recovery.action}`
+      );
+    }
     await job.updateProgress(20);
 
-    // 3. Run helm upgrade
-    const result = await helmUpgrade({
+    // 3. Run helm upgrade (or install if recovery uninstalled the release)
+    const useInstall = recovery.action === "uninstalled";
+    const helmOp = useInstall ? helmInstall : helmUpgrade;
+    const result = await helmOp({
       releaseName: helmRelease,
       chart: chartUrl,
       namespace: tenantNamespace,
       valuesYaml: renderedValues || undefined,
       version: chartVersion,
       wait: true,
-      timeout: "5m"
+      timeout: "5m",
+      createNamespace: false,
     });
 
+    const opLabel = useInstall ? "install (after recovery)" : "upgrade";
     console.log(
-      `[worker] Helm upgrade completed: ${result.name} → ${result.status}`
+      `[worker] Helm ${opLabel} completed: ${result.name} → ${result.status}`
     );
     await job.updateProgress(70);
 
@@ -294,24 +363,32 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
       // No ingress
     }
 
-    // 6. Update status
+    // 6. Update status + version info from Helm result
+    const versionData = {
+      chartVersion: result.chart !== "unknown" ? result.chart : null,
+      appVersion: result.appVersion !== "unknown" ? result.appVersion : null,
+      revision: parseInt(result.revision, 10) || 1,
+    };
+
     if (ready) {
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
           url,
-          errorMessage: null
+          errorMessage: null,
+          ...versionData,
         }
       });
-      console.log(`[worker] Upgrade SUCCESS: ${helmRelease} is RUNNING`);
+      console.log(`[worker] Upgrade SUCCESS: ${helmRelease} is RUNNING (chart: ${versionData.chartVersion}, app: ${versionData.appVersion})`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Service updated but not yet healthy: ${podStatuses}`
+          errorMessage: `Service updated but not yet healthy: ${podStatuses}`,
+          ...versionData,
         }
       });
       console.warn(

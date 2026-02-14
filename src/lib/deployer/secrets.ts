@@ -134,6 +134,37 @@ export async function createK8sSecret(
 }
 
 /**
+ * Read a K8s Secret and return its decoded data.
+ * Returns empty object if the secret doesn't exist.
+ * Used during upgrades to retrieve existing secrets.
+ */
+export async function readK8sSecret(
+  namespace: string,
+  name: string
+): Promise<Record<string, string>> {
+  const api = getCoreApi();
+
+  try {
+    const secret = await api.readNamespacedSecret({ name, namespace });
+    const data = secret.data ?? {};
+    const result: Record<string, string> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+      // K8s stores secret data as base64-encoded strings
+      result[key] = Buffer.from(value, "base64").toString("utf8");
+    }
+
+    return result;
+  } catch (err: unknown) {
+    if (isK8sError(err) && err.statusCode === 404) {
+      return {};
+    }
+    console.warn(`[secrets] Failed to read K8s secret '${name}':`, err);
+    return {};
+  }
+}
+
+/**
  * Delete a K8s Secret (used during undeploy).
  * Idempotent — ignores 404.
  */

@@ -14,11 +14,12 @@ export interface ServiceNodeData extends Record<string, unknown> {
   iconUrl: string;
   status: string;
   url: string | null;
+  appVersion: string | null;
   category: string;
 }
 
 function ServiceNodeComponent({ data }: NodeProps) {
-  const { displayName, recipeName, iconUrl, status, url } =
+  const { displayName, recipeName, iconUrl, status, url, appVersion } =
     data as ServiceNodeData;
 
   return (
@@ -37,7 +38,14 @@ function ServiceNodeComponent({ data }: NodeProps) {
           className="size-9 rounded-lg bg-muted p-1 shrink-0"
         />
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{displayName}</div>
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-sm truncate">{displayName}</span>
+            {appVersion && (
+              <span className="shrink-0 text-[10px] text-muted-foreground/70 font-mono">
+                v{appVersion}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground truncate">
             {recipeName}
           </div>

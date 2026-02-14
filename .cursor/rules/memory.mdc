@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description:
+globs:
 alwaysApply: true
 ---
 
@@ -9,6 +9,13 @@ alwaysApply: true
 Persistent scratchpad for runtime knowledge. Read every session. Keep it lean — add discoveries, delete what's stale.
 
 ---
+
+## Testing
+
+- **CLI first**: When testing features, use `yarn chat "..."` (the CLI agent tool) instead of the browser. Only use the browser when explicitly told to or when testing UI-specific behavior. The CLI is faster and costs far fewer tokens.
+- **CLI supports debug mode**: `yarn chat "..." --debug` shows raw SSE events for debugging stream parsing issues.
+- **Auth cookie name**: Auth.js v5 uses `authjs.session-token` (not `next-auth.session-token`).
+- **Deployment deletion**: Worker now deletes DB records on successful undeploy (not soft-delete to STOPPED).
 
 ## Critical: Things That Will Bite You
 
@@ -62,7 +69,8 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - KubeConfig: `loadFromDefault()` for kind/minikube/any. `loadFromCluster()` only as fallback.
 - K8s error `statusCode`: 409=already exists, 404=not found. Use for idempotent ops.
 - Helm values: write to temp file (os.tmpdir + randomUUID), pass via `--values`, cleanup in `finally`.
-- Bitnami chart versions: use NULL (latest) for seed recipes — pinned versions reference tags that get removed from Docker Hub.
+- **ALL chart versions use NULL (latest)** for seed recipes — pinned versions reference Docker tags that get removed. This includes Bitnami charts AND the 8gears n8n chart (jumped from 0.26.1 to 2.0.1).
+- 8gears n8n chart 2.x: `persistence` moved under `main.persistence`, `valkey` dependency added (disabled by default). Values template updated for 2.x compatibility.
 - Bitnami label: `app.kubernetes.io/instance=<releaseName>` for pod queries.
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
@@ -71,8 +79,16 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Queue name: `"deployments"`. Job names from `JOB_NAMES` enum: DEPLOY, UNDEPLOY, UPGRADE, HEALTH_CHECK.
 - Connection: plain options `{ host, port, maxRetriesPerRequest: null }` — NOT IORedis instance.
 - Engine entry points: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` from `@/lib/deployer/engine`.
-- Values templates: Handlebars with `noEscape: true`. Context: `config`, `secrets`, `deps`, `tenant`, `platform`.
-- Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release>.<namespace>.svc.cluster.local`.
+- **Upgrade flow**: `initiateUpgrade()` re-resolves existing deps via `resolveExistingDependencies()` and reuses secrets from K8s via `readK8sSecret()`. Never regenerates secrets on upgrade.
+- Values templates: Handlebars with `noEscape: true`. Context: `config`, `secrets`, `deps`, `tenant`, `platform`, `cluster`.
+- Custom Handlebars helpers registered: `eq` (block helper for equality checks in templates).
+- Template `cluster` context: `domain`, `ingress_class`, `ingress_enabled`, `tls_cluster_issuer` — controlled by env vars `MATHISON_BASE_DOMAIN`, `INGRESS_CLASS`, `INGRESS_ENABLED`, `TLS_CLUSTER_ISSUER`.
+- **Resource config**: All recipes expose `cpu_request`, `memory_request`, `cpu_limit`, `memory_limit` in configSchema. Templates use `{{config.cpu_request}}` etc. Users can change resources via `updateService`.
+- Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release><suffix>.<namespace>.svc.cluster.local`.
+- **Bitnami service name suffixes**: postgresql → `-postgresql`, redis → `-redis-master`, mysql → `-mysql`, mongodb → `-mongodb`, minio → `-minio`. These are appended to the Helm release name for K8s service DNS.
+- **Dependency credentials are flattened**: `DependencyInfo` has `host`, `port`, plus all config/secret values at top level. Templates access `{{deps.n8n-db.password}}` directly (not `{{deps.n8n-db.credentials.password}}`).
+- **Stale PVC gotcha**: When redeploying with same Helm release name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
+- **Port-forward for local access**: `kubectl port-forward svc/<svc-name> <local-port>:<svc-port> -n <ns>` — needed for kind clusters without ingress.
 
 ## Frontend Patterns
 
