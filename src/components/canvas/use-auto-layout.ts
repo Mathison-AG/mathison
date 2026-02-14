@@ -5,7 +5,7 @@ import dagre from "dagre";
 import type { Node, Edge } from "@xyflow/react";
 
 const NODE_WIDTH = 260;
-const NODE_HEIGHT = 110;
+const NODE_HEIGHT = 140;
 
 function getLayoutedElements(nodes: Node[], edges: Edge[]) {
   const g = new dagre.graphlib.Graph();

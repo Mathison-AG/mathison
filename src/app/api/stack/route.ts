@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
+import { getReleaseResources } from "@/lib/cluster/kubernetes";
+import type { PodResources } from "@/lib/cluster/kubernetes";
 
 export async function GET() {
   try {
@@ -27,29 +29,63 @@ export async function GET() {
             displayName: true,
             slug: true,
             iconUrl: true,
-            category: true
-          }
-        }
+            category: true,
+          },
+        },
       },
-      orderBy: { createdAt: "asc" }
+      orderBy: { createdAt: "asc" },
     });
 
-    const nodes = deployments.map((d) => ({
-      id: d.id,
-      type: "service" as const,
-      position: { x: 0, y: 0 }, // Auto-laid out by dagre on the client
-      data: {
-        deploymentId: d.id,
-        displayName: d.name,
-        recipeName: d.recipe.displayName,
-        recipeSlug: d.recipe.slug,
-        iconUrl: d.recipe.iconUrl || `/icons/${d.recipe.slug}.svg`,
-        status: d.status,
-        url: d.url,
-        appVersion: d.appVersion,
-        category: d.recipe.category,
+    // Fetch K8s resources for running deployments
+    const resourceMap = new Map<string, PodResources[]>();
+    const running = deployments.filter(
+      (d) => d.status === "RUNNING" || d.status === "DEPLOYING"
+    );
+
+    if (running.length > 0) {
+      const results = await Promise.allSettled(
+        running.map(async (d) => {
+          const resources = await getReleaseResources(d.namespace, d.helmRelease);
+          return { helmRelease: d.helmRelease, resources };
+        })
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          resourceMap.set(result.value.helmRelease, result.value.resources);
+        }
       }
-    }));
+    }
+
+    const nodes = deployments.map((d) => {
+      // Summarize resources from first pod's first container
+      const podResources = resourceMap.get(d.helmRelease);
+      const mainContainer = podResources?.[0]?.containers?.[0];
+
+      return {
+        id: d.id,
+        type: "service" as const,
+        position: { x: 0, y: 0 }, // Auto-laid out by dagre on the client
+        data: {
+          deploymentId: d.id,
+          displayName: d.name,
+          recipeName: d.recipe.displayName,
+          recipeSlug: d.recipe.slug,
+          iconUrl: d.recipe.iconUrl || `/icons/${d.recipe.slug}.svg`,
+          status: d.status,
+          url: d.url,
+          appVersion: d.appVersion,
+          category: d.recipe.category,
+          resources: mainContainer
+            ? {
+                cpuRequest: mainContainer.requests.cpu,
+                memoryRequest: mainContainer.requests.memory,
+                cpuLimit: mainContainer.limits.cpu,
+                memoryLimit: mainContainer.limits.memory,
+              }
+            : null,
+        },
+      };
+    });
 
     const edges = deployments.flatMap((d) =>
       d.dependsOn.map((depId) => ({
@@ -57,7 +93,7 @@ export async function GET() {
         source: depId,
         target: d.id,
         type: "dependency" as const,
-        animated: true
+        animated: true,
       }))
     );
 

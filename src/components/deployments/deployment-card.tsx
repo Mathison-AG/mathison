@@ -7,7 +7,7 @@ import { ChevronRight, ExternalLink, Cpu, MemoryStick, Tag } from "lucide-react"
 import { StatusBadge } from "./status-badge";
 
 import type { Deployment } from "@/types/deployment";
-import { extractResources } from "@/types/deployment";
+import { getResourceSummary } from "@/types/deployment";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -34,8 +34,7 @@ export function DeploymentCard({ deployment }: DeploymentCardProps) {
   const iconSrc =
     deployment.recipe.iconUrl || `/icons/${deployment.recipe.slug}.svg`;
 
-  const config = deployment.config as Record<string, unknown>;
-  const resources = extractResources(config);
+  const resources = getResourceSummary(deployment.resources);
 
   return (
     <Link href={`/deployments/${deployment.id}`} className="block">

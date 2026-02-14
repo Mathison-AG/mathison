@@ -2,9 +2,16 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Cpu, MemoryStick } from "lucide-react";
 
 import { StatusBadge } from "@/components/deployments/status-badge";
+
+export interface ServiceNodeResources {
+  cpuRequest: string | null;
+  memoryRequest: string | null;
+  cpuLimit: string | null;
+  memoryLimit: string | null;
+}
 
 export interface ServiceNodeData extends Record<string, unknown> {
   deploymentId: string;
@@ -16,10 +23,11 @@ export interface ServiceNodeData extends Record<string, unknown> {
   url: string | null;
   appVersion: string | null;
   category: string;
+  resources: ServiceNodeResources | null;
 }
 
 function ServiceNodeComponent({ data }: NodeProps) {
-  const { displayName, recipeName, iconUrl, status, url, appVersion } =
+  const { displayName, recipeName, iconUrl, status, url, appVersion, resources } =
     data as ServiceNodeData;
 
   return (
@@ -52,7 +60,25 @@ function ServiceNodeComponent({ data }: NodeProps) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
+      {/* Resources row */}
+      {resources && (resources.cpuRequest || resources.memoryRequest) && (
+        <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground/70">
+          {resources.cpuRequest && (
+            <span className="inline-flex items-center gap-0.5">
+              <Cpu className="size-2.5" />
+              {resources.cpuRequest}
+            </span>
+          )}
+          {resources.memoryRequest && (
+            <span className="inline-flex items-center gap-0.5">
+              <MemoryStick className="size-2.5" />
+              {resources.memoryRequest}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex items-center justify-between gap-2">
         <StatusBadge status={status} />
         {url && (
           <a

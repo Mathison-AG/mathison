@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getReleaseResources } from "@/lib/cluster/kubernetes";
 import { initiateRemoval } from "@/lib/deployer/engine";
 
 // ─── GET /api/deployments/[id] ────────────────────────────
 // Get deployment detail (tenant-scoped for authorization)
+// Enriches with live K8s resource allocations when deployment is RUNNING
 
 export async function GET(
   _req: Request,
@@ -27,10 +29,10 @@ export async function GET(
             slug: true,
             displayName: true,
             iconUrl: true,
-            category: true
-          }
-        }
-      }
+            category: true,
+          },
+        },
+      },
     });
 
     if (!deployment) {
@@ -40,7 +42,23 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(deployment);
+    // Fetch live resource allocations from K8s for running deployments
+    let resources: Awaited<ReturnType<typeof getReleaseResources>> = [];
+    if (deployment.status === "RUNNING" || deployment.status === "DEPLOYING") {
+      try {
+        resources = await getReleaseResources(
+          deployment.namespace,
+          deployment.helmRelease
+        );
+      } catch (err) {
+        console.warn(
+          `[GET /api/deployments/[id]] Failed to fetch K8s resources for ${deployment.helmRelease}:`,
+          err
+        );
+      }
+    }
+
+    return NextResponse.json({ ...deployment, resources });
   } catch (error) {
     console.error("[GET /api/deployments/[id]]", error);
     return NextResponse.json(

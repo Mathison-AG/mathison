@@ -477,6 +477,57 @@ export async function getIngressUrl(
   }
 }
 
+// ─── Resource queries ─────────────────────────────────────
+
+export interface ContainerResources {
+  containerName: string;
+  requests: { cpu: string | null; memory: string | null };
+  limits: { cpu: string | null; memory: string | null };
+}
+
+export interface PodResources {
+  podName: string;
+  containers: ContainerResources[];
+}
+
+/**
+ * Get resource requests/limits for pods matching a Helm release label.
+ * Reads the actual pod spec (not just what was requested in values).
+ */
+export async function getReleaseResources(
+  namespace: string,
+  helmRelease: string
+): Promise<PodResources[]> {
+  const api = getCoreApi();
+
+  try {
+    const res = await api.listNamespacedPod({
+      namespace,
+      labelSelector: `app.kubernetes.io/instance=${helmRelease}`,
+    });
+
+    return (res.items ?? []).map((pod) => ({
+      podName: pod.metadata?.name ?? "unknown",
+      containers: (pod.spec?.containers ?? []).map((c) => ({
+        containerName: c.name,
+        requests: {
+          cpu: c.resources?.requests?.["cpu"] ?? null,
+          memory: c.resources?.requests?.["memory"] ?? null,
+        },
+        limits: {
+          cpu: c.resources?.limits?.["cpu"] ?? null,
+          memory: c.resources?.limits?.["memory"] ?? null,
+        },
+      })),
+    }));
+  } catch (err: unknown) {
+    if (isK8sError(err) && err.statusCode === 404) {
+      return [];
+    }
+    throw wrapK8sError("getReleaseResources", err);
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────
 
 interface K8sApiError {

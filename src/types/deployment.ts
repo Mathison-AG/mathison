@@ -1,5 +1,18 @@
 import type { DeploymentStatus } from "@/generated/prisma/enums";
 
+// ─── K8s resource types ────────────────────────────────────
+
+export interface ContainerResources {
+  containerName: string;
+  requests: { cpu: string | null; memory: string | null };
+  limits: { cpu: string | null; memory: string | null };
+}
+
+export interface PodResources {
+  podName: string;
+  containers: ContainerResources[];
+}
+
 // ─── Deployment (API response shape) ──────────────────────
 
 export interface Deployment {
@@ -15,6 +28,7 @@ export interface Deployment {
   errorMessage: string | null;
   config: Record<string, unknown>;
   dependsOn: string[];
+  resources: PodResources[];
   recipe: {
     slug: string;
     displayName: string;
@@ -33,22 +47,29 @@ export interface DeploymentDetail extends Deployment {
   secretsRef: string | null;
 }
 
-// ─── Resource config helpers ──────────────────────────────
+// ─── Resource helpers ─────────────────────────────────────
 
-export interface ResourceConfig {
+export interface ResourceSummary {
   cpuRequest: string | null;
   cpuLimit: string | null;
   memoryRequest: string | null;
   memoryLimit: string | null;
 }
 
-/** Extract resource config from deployment.config */
-export function extractResources(config: Record<string, unknown>): ResourceConfig {
+/**
+ * Extract a resource summary from the first pod's main container.
+ * This gives the "per-pod" resource allocation for display.
+ */
+export function getResourceSummary(resources: PodResources[]): ResourceSummary {
+  const main = resources[0]?.containers[0];
+  if (!main) {
+    return { cpuRequest: null, cpuLimit: null, memoryRequest: null, memoryLimit: null };
+  }
   return {
-    cpuRequest: (config.cpu_request as string) ?? null,
-    cpuLimit: (config.cpu_limit as string) ?? null,
-    memoryRequest: (config.memory_request as string) ?? null,
-    memoryLimit: (config.memory_limit as string) ?? null,
+    cpuRequest: main.requests.cpu,
+    cpuLimit: main.limits.cpu,
+    memoryRequest: main.requests.memory,
+    memoryLimit: main.limits.memory,
   };
 }
 

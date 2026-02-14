@@ -38,7 +38,7 @@ import { StatusBadge } from "./status-badge";
 import { LogViewer } from "./log-viewer";
 
 import type { DeploymentDetail as DeploymentDetailType } from "@/types/deployment";
-import { extractResources, RESOURCE_CONFIG_KEYS } from "@/types/deployment";
+import { getResourceSummary, RESOURCE_CONFIG_KEYS } from "@/types/deployment";
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
     deployment.recipe.iconUrl || `/icons/${deployment.recipe.slug}.svg`;
 
   const config = deployment.config as Record<string, unknown>;
-  const resources = extractResources(config);
+  const resources = getResourceSummary(deployment.resources);
   const hasResources =
     resources.cpuRequest ||
     resources.cpuLimit ||

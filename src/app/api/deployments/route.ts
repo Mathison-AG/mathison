@@ -3,9 +3,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
+import { getReleaseResources } from "@/lib/cluster/kubernetes";
+import type { PodResources } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments ─────────────────────────────────
-// List deployments for the active workspace
+// List deployments for the active workspace, enriched with K8s resources
 
 export async function GET(req: Request) {
   try {
@@ -28,7 +30,7 @@ export async function GET(req: Request) {
     const deployments = await prisma.deployment.findMany({
       where: {
         workspaceId: workspace.id,
-        ...(status ? { status: status as never } : {})
+        ...(status ? { status: status as never } : {}),
       },
       include: {
         recipe: {
@@ -36,14 +38,43 @@ export async function GET(req: Request) {
             slug: true,
             displayName: true,
             iconUrl: true,
-            category: true
-          }
-        }
+            category: true,
+          },
+        },
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(deployments);
+    // Fetch K8s resources for all running deployments in parallel
+    const resourceMap = new Map<string, PodResources[]>();
+    const runningDeployments = deployments.filter(
+      (d) => d.status === "RUNNING" || d.status === "DEPLOYING"
+    );
+
+    if (runningDeployments.length > 0) {
+      const results = await Promise.allSettled(
+        runningDeployments.map(async (d) => {
+          const resources = await getReleaseResources(
+            d.namespace,
+            d.helmRelease
+          );
+          return { helmRelease: d.helmRelease, resources };
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          resourceMap.set(result.value.helmRelease, result.value.resources);
+        }
+      }
+    }
+
+    const enriched = deployments.map((d) => ({
+      ...d,
+      resources: resourceMap.get(d.helmRelease) ?? [],
+    }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("[GET /api/deployments]", error);
     return NextResponse.json(
