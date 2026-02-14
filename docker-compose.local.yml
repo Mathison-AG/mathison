@@ -25,5 +25,74 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-time setup: sync deps, generate Prisma client, run migrations, seed DB.
+  # Runs on every `docker compose up` but all operations are idempotent and fast
+  # when nothing has changed.
+  setup:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    environment:
+      DATABASE_URL: postgresql://mathison:mathison@postgres:5432/mathison
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo '[setup] Syncing dependencies...' &&
+        yarn install --frozen-lockfile &&
+        echo '[setup] Generating Prisma client...' &&
+        npx prisma generate &&
+        echo '[setup] Applying migrations...' &&
+        npx prisma migrate deploy &&
+        echo '[setup] Seeding database...' &&
+        npx prisma db seed &&
+        echo '[setup] Done.'
+      "
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - ~/.kube:/root/.kube:ro
+    environment:
+      DATABASE_URL: postgresql://mathison:mathison@postgres:5432/mathison
+      REDIS_URL: redis://redis:6379
+      AUTH_URL: http://localhost:3000
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: yarn dev --hostname 0.0.0.0
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - ~/.kube:/root/.kube:ro
+    environment:
+      DATABASE_URL: postgresql://mathison:mathison@postgres:5432/mathison
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    command: yarn worker
+
 volumes:
   pgdata:
+  node_modules:

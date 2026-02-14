@@ -12,37 +12,86 @@ Everything needed to develop and test Mathison.
 
 | Requirement | Version | Notes |
 |------------|---------|-------|
-| Node.js | 22+ | Verified: v22.22.0 |
-| yarn | 1.x | Verified: 1.22.22 |
-| Docker | Latest | Required for postgres + redis |
+| Docker | Latest | Runs all services (postgres, redis, web, worker) |
 | kind | Latest | K8s testing cluster |
 | Helm | 4.x | `/opt/homebrew/bin/helm` |
 | kubectl | Latest | `/usr/local/bin/kubectl` |
 
+Node.js and yarn are **not** required on the host — they run inside Docker.
+
 ## Quick Start
 
 ```bash
-# 1. Start Docker services (postgres on 5433, redis on 6379)
-docker compose -f docker-compose.local.yml up -d
+# 1. Start everything (postgres, redis, web UI, worker)
+docker compose -f docker-compose.local.yml up
 
-# 2. Install dependencies
-yarn install
+# That's it! The setup service automatically:
+#   - Installs Node.js dependencies
+#   - Generates Prisma client
+#   - Runs database migrations
+#   - Seeds the catalog (5 recipes)
+#
+# Web UI: http://localhost:3000
+# Worker: processes deployment jobs automatically
 
-# 3. Run database migrations
-npx prisma migrate dev
-
-# 4. Seed the database (5 recipes)
-npx prisma db seed
-
-# 5. Start the dev server
-yarn dev                    # http://localhost:3000
-
-# 6. Start the worker (separate terminal — needed for deployments)
-yarn worker
-
-# 7. (Optional) Create/verify kind cluster for K8s testing
+# 2. (Optional) Create/verify kind cluster for K8s testing
 kind create cluster --name mathison-dev
 kubectl --context kind-mathison-dev cluster-info
+```
+
+### First run
+
+The first `docker compose up` takes a few minutes to build the Docker image and install dependencies. Subsequent starts are fast (~10 seconds) since everything is cached.
+
+### Rebuilding after dependency changes
+
+If `package.json` or `yarn.lock` change, the setup service syncs dependencies automatically on next `docker compose up`. If a dependency has native modules, rebuild the image:
+
+```bash
+docker compose -f docker-compose.local.yml up --build
+```
+
+To fully reset (remove cached node_modules volume):
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+docker compose -f docker-compose.local.yml up --build
+```
+
+### Running one-off commands
+
+```bash
+# Run a command inside the web container
+docker compose -f docker-compose.local.yml exec web yarn typecheck
+docker compose -f docker-compose.local.yml exec web yarn lint
+
+# Open Prisma Studio
+docker compose -f docker-compose.local.yml exec web npx prisma studio
+
+# Create a new migration
+docker compose -f docker-compose.local.yml exec web npx prisma migrate dev --name my_migration
+
+# Chat CLI
+docker compose -f docker-compose.local.yml exec web yarn chat "deploy postgresql"
+```
+
+### Running without Docker (host mode)
+
+If you prefer running the app directly on the host (requires Node.js 22+ and yarn):
+
+```bash
+# Start only infra services
+docker compose -f docker-compose.local.yml up postgres redis
+
+# Install deps, run migrations, seed
+yarn install
+npx prisma generate
+npx prisma migrate dev
+npx prisma db seed
+
+# Start dev server + worker (separate terminals)
+yarn dev                    # http://localhost:3000
+yarn worker
 ```
 
 ## Environment Variables
@@ -54,7 +103,7 @@ All in `.env.local` at the workspace root:
 MATHISON_MODE=self-hosted
 MATHISON_BASE_DOMAIN=localhost:3000
 
-# Database (Docker Compose — note port 5433)
+# Database (Docker Compose — note port 5433 from host, 5432 inside Docker network)
 DATABASE_URL=postgresql://mathison:mathison@localhost:5433/mathison
 
 # Redis (Docker Compose)
@@ -72,14 +121,26 @@ ANTHROPIC_API_KEY=<user-provided>
 # OPENAI_API_KEY=<user-provided>
 ```
 
+**Note**: When running inside Docker, `DATABASE_URL` and `REDIS_URL` are overridden automatically to use Docker service names (`postgres:5432`, `redis:6379`). The `.env.local` values are only used when running on the host.
+
+## Docker Compose Services
+
+| Service | Description | Ports |
+|---------|-------------|-------|
+| `postgres` | PostgreSQL 16 + pgvector | 5433 → 5432 |
+| `redis` | Redis 7 (Alpine) | 6379 → 6379 |
+| `setup` | Runs migrations + seed (exits after) | — |
+| `web` | Next.js dev server | 3000 → 3000 |
+| `worker` | BullMQ deployment worker | — |
+
 ## Port Map
 
-| Service | Port | Notes |
-|---------|------|-------|
-| Next.js dev server | 3000 | `yarn dev` |
+| Service | Host Port | Notes |
+|---------|-----------|-------|
+| Next.js dev server | 3000 | via Docker or `yarn dev` |
 | PostgreSQL | **5433** | Docker (5432 used by aucm project) |
 | Redis | 6379 | Docker |
-| Prisma Studio | 5555 | `npx prisma studio` |
+| Prisma Studio | 5555 | `npx prisma studio` (host mode) |
 
 ## Test Credentials
 
@@ -105,3 +166,5 @@ kind delete cluster --name mathison-dev
 # Load images for testing (kind has limited Docker Hub access)
 kind load docker-image bitnami/redis:latest --name mathison-dev
 ```
+
+**Note**: K8s operations (Helm deploys, namespace management) require `helm` and `kubectl` on the host. The Docker containers do not include these tools — K8s operations from the worker will fail gracefully if the cluster is unreachable.
