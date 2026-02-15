@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
-import { getReleaseResources } from "@/lib/cluster/kubernetes";
-import type { PodResources } from "@/lib/cluster/kubernetes";
+import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
+import type { PodResources, ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 export async function GET() {
   try {
@@ -36,8 +36,9 @@ export async function GET() {
       orderBy: { createdAt: "asc" },
     });
 
-    // Fetch K8s resources for running deployments
+    // Fetch K8s resources + service ports for running deployments
     const resourceMap = new Map<string, PodResources[]>();
+    const portMap = new Map<string, ReleaseServicePort[]>();
     const running = deployments.filter(
       (d) => d.status === "RUNNING" || d.status === "DEPLOYING"
     );
@@ -45,13 +46,17 @@ export async function GET() {
     if (running.length > 0) {
       const results = await Promise.allSettled(
         running.map(async (d) => {
-          const resources = await getReleaseResources(d.namespace, d.helmRelease);
-          return { helmRelease: d.helmRelease, resources };
+          const [resources, ports] = await Promise.all([
+            getReleaseResources(d.namespace, d.helmRelease),
+            getReleaseServicePorts(d.namespace, d.helmRelease),
+          ]);
+          return { helmRelease: d.helmRelease, resources, ports };
         })
       );
       for (const result of results) {
         if (result.status === "fulfilled") {
           resourceMap.set(result.value.helmRelease, result.value.resources);
+          portMap.set(result.value.helmRelease, result.value.ports);
         }
       }
     }
@@ -83,6 +88,10 @@ export async function GET() {
                 memoryLimit: mainContainer.limits.memory,
               }
             : null,
+          ports: (portMap.get(d.helmRelease) ?? []).map((p) => ({
+            port: p.port,
+            name: p.name,
+          })),
         },
       };
     });

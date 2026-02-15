@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getReleaseResources } from "@/lib/cluster/kubernetes";
+import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
 import { initiateRemoval } from "@/lib/deployer/engine";
+import type { ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments/[id] ────────────────────────────
 // Get deployment detail (tenant-scoped for authorization)
@@ -42,23 +43,24 @@ export async function GET(
       );
     }
 
-    // Fetch live resource allocations from K8s for running deployments
+    // Fetch live resource allocations + service ports from K8s for running deployments
     let resources: Awaited<ReturnType<typeof getReleaseResources>> = [];
+    let ports: ReleaseServicePort[] = [];
     if (deployment.status === "RUNNING" || deployment.status === "DEPLOYING") {
       try {
-        resources = await getReleaseResources(
-          deployment.namespace,
-          deployment.helmRelease
-        );
+        [resources, ports] = await Promise.all([
+          getReleaseResources(deployment.namespace, deployment.helmRelease),
+          getReleaseServicePorts(deployment.namespace, deployment.helmRelease),
+        ]);
       } catch (err) {
         console.warn(
-          `[GET /api/deployments/[id]] Failed to fetch K8s resources for ${deployment.helmRelease}:`,
+          `[GET /api/deployments/[id]] Failed to fetch K8s data for ${deployment.helmRelease}:`,
           err
         );
       }
     }
 
-    return NextResponse.json({ ...deployment, resources });
+    return NextResponse.json({ ...deployment, resources, ports });
   } catch (error) {
     console.error("[GET /api/deployments/[id]]", error);
     return NextResponse.json(

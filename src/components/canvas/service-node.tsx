@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { ExternalLink, Cpu, MemoryStick } from "lucide-react";
+import { ExternalLink, Cpu, MemoryStick, Network } from "lucide-react";
 
 import { StatusBadge } from "@/components/deployments/status-badge";
 
@@ -11,6 +11,11 @@ export interface ServiceNodeResources {
   memoryRequest: string | null;
   cpuLimit: string | null;
   memoryLimit: string | null;
+}
+
+export interface ServiceNodePort {
+  port: number;
+  name?: string;
 }
 
 export interface ServiceNodeData extends Record<string, unknown> {
@@ -24,10 +29,11 @@ export interface ServiceNodeData extends Record<string, unknown> {
   appVersion: string | null;
   category: string;
   resources: ServiceNodeResources | null;
+  ports: ServiceNodePort[];
 }
 
 function ServiceNodeComponent({ data }: NodeProps) {
-  const { displayName, recipeName, iconUrl, status, url, appVersion, resources } =
+  const { displayName, recipeName, iconUrl, status, url, appVersion, resources, ports } =
     data as ServiceNodeData;
 
   return (
@@ -60,23 +66,29 @@ function ServiceNodeComponent({ data }: NodeProps) {
         </div>
       </div>
 
-      {/* Resources row */}
-      {resources && (resources.cpuRequest || resources.memoryRequest) && (
+      {/* Resources + ports row */}
+      {(resources && (resources.cpuRequest || resources.memoryRequest)) || (ports && ports.length > 0) ? (
         <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground/70">
-          {resources.cpuRequest && (
+          {resources?.cpuRequest && (
             <span className="inline-flex items-center gap-0.5">
               <Cpu className="size-2.5" />
               {resources.cpuRequest}
             </span>
           )}
-          {resources.memoryRequest && (
+          {resources?.memoryRequest && (
             <span className="inline-flex items-center gap-0.5">
               <MemoryStick className="size-2.5" />
               {resources.memoryRequest}
             </span>
           )}
+          {ports && ports.length > 0 && (
+            <span className="inline-flex items-center gap-0.5">
+              <Network className="size-2.5" />
+              {ports.map((p) => p.port).join(", ")}
+            </span>
+          )}
         </div>
-      )}
+      ) : null}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <StatusBadge status={status} />

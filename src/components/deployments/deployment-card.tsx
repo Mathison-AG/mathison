@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, ExternalLink, Cpu, MemoryStick, Tag } from "lucide-react";
+import {
+  ChevronRight,
+  ExternalLink,
+  Cpu,
+  MemoryStick,
+  Tag,
+  Network
+} from "lucide-react";
 
 import { StatusBadge } from "./status-badge";
 
@@ -12,9 +19,7 @@ import { getResourceSummary } from "@/types/deployment";
 // ─── Helpers ──────────────────────────────────────────────
 
 function timeAgo(dateStr: string): string {
-  const seconds = Math.floor(
-    (Date.now() - new Date(dateStr).getTime()) / 1000
-  );
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -54,13 +59,12 @@ export function DeploymentCard({ deployment }: DeploymentCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold truncate">{deployment.name}</h3>
-            <span className="text-sm text-muted-foreground hidden sm:inline">
+            <span className="text-sm text-muted-foreground">
               {deployment.recipe.displayName}
             </span>
             {deployment.appVersion && (
-              <span className="hidden sm:inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                <Tag className="size-2.5" />
-                v{deployment.appVersion}
+              <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <Tag className="size-2.5" />v{deployment.appVersion}
               </span>
             )}
           </div>
@@ -93,15 +97,21 @@ export function DeploymentCard({ deployment }: DeploymentCardProps) {
             )}
             {/* Resource summary */}
             {resources.cpuRequest && (
-              <span className="hidden md:inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
                 <Cpu className="size-2.5" />
                 {resources.cpuRequest}
               </span>
             )}
             {resources.memoryRequest && (
-              <span className="hidden md:inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
                 <MemoryStick className="size-2.5" />
                 {resources.memoryRequest}
+              </span>
+            )}
+            {deployment.ports.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
+                <Network className="size-2.5" />
+                {deployment.ports.map((p) => p.port).join(", ")}
               </span>
             )}
             <span className="text-xs text-muted-foreground">

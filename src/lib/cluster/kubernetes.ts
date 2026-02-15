@@ -477,6 +477,66 @@ export async function getIngressUrl(
   }
 }
 
+// ─── Service port queries ─────────────────────────────────
+
+export interface ReleaseServicePort {
+  /** The K8s service port (what other services connect to) */
+  port: number;
+  /** The container target port */
+  targetPort: number | string;
+  /** Port name (e.g. "http", "postgresql") */
+  name?: string;
+  /** Protocol (TCP, UDP) */
+  protocol: string;
+}
+
+/**
+ * Get exposed service ports for a Helm release.
+ * Filters by the standard Bitnami/Helm label `app.kubernetes.io/instance`.
+ * Excludes headless services (clusterIP=None) and returns the primary
+ * service's ports (prefers non-headless, non-metrics services).
+ */
+export async function getReleaseServicePorts(
+  namespace: string,
+  helmRelease: string
+): Promise<ReleaseServicePort[]> {
+  const api = getCoreApi();
+
+  try {
+    const res = await api.listNamespacedService({
+      namespace,
+      labelSelector: `app.kubernetes.io/instance=${helmRelease}`,
+    });
+
+    const services = res.items ?? [];
+    // Filter out headless services and metrics-only services
+    const candidates = services.filter(
+      (svc) =>
+        svc.spec?.clusterIP !== "None" &&
+        !svc.metadata?.name?.endsWith("-metrics") &&
+        !svc.metadata?.name?.endsWith("-headless")
+    );
+
+    // Pick the first candidate (Bitnami charts typically have one primary service)
+    const primary = candidates[0];
+    if (!primary?.spec?.ports?.length) {
+      return [];
+    }
+
+    return primary.spec.ports.map((p) => ({
+      port: p.port,
+      targetPort: p.targetPort ?? p.port,
+      name: p.name,
+      protocol: p.protocol ?? "TCP",
+    }));
+  } catch (err: unknown) {
+    if (isK8sError(err) && err.statusCode === 404) {
+      return [];
+    }
+    throw wrapK8sError("getReleaseServicePorts", err);
+  }
+}
+
 // ─── Resource queries ─────────────────────────────────────
 
 export interface ContainerResources {

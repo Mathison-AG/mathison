@@ -10,10 +10,22 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 
 ---
 
+## Development Environment
+
+- **Docker-first**: All services run via `docker compose -f docker-compose.local.yml up`. No need to install Node.js/yarn on the host.
+- **Services**: postgres, redis, setup (migrations/seed), web (Next.js), worker (BullMQ) — all in one compose file.
+- **Setup service**: Runs `yarn install`, `prisma generate`, `prisma migrate deploy`, `prisma db seed` on every start. All idempotent.
+- **Source code is bind-mounted** (`.:/app`) for hot reloading. `node_modules` uses a named Docker volume (Linux-built deps, avoids macOS conflicts).
+- **Kubeconfig**: `~/.kube` is mounted read-only into web + worker. `docker-entrypoint.dev.sh` rewrites `127.0.0.1` → `host.docker.internal` and sets `insecure-skip-tls-verify: true` so containers can reach the kind cluster on the host.
+- **Env var override**: Docker `environment:` sets `DATABASE_URL` (postgres:5432) and `REDIS_URL` (redis:6379) for Docker networking. Other vars (API keys, AUTH_SECRET) are loaded from `.env.local` by the apps.
+- **After adding deps**: Restart containers (setup service runs `yarn install`). For native module changes: `docker compose -f docker-compose.local.yml up --build`.
+- **Full reset**: `docker compose -f docker-compose.local.yml down -v && docker compose -f docker-compose.local.yml up --build`.
+- **Running commands**: `docker compose -f docker-compose.local.yml exec web <cmd>` (e.g. `yarn typecheck`, `yarn lint`, `yarn chat "..."`).
+
 ## Testing
 
-- **CLI first**: When testing features, use `yarn chat "..."` (the CLI agent tool) instead of the browser. Only use the browser when explicitly told to or when testing UI-specific behavior. The CLI is faster and costs far fewer tokens.
-- **CLI supports debug mode**: `yarn chat "..." --debug` shows raw SSE events for debugging stream parsing issues.
+- **CLI first**: When testing features, use `docker compose -f docker-compose.local.yml exec web yarn chat "..."` instead of the browser. Only use the browser when explicitly told to or when testing UI-specific behavior. The CLI is faster and costs far fewer tokens.
+- **CLI supports debug mode**: Add `--debug` to show raw SSE events for debugging stream parsing issues.
 - **Auth cookie name**: Auth.js v5 uses `authjs.session-token` (not `next-auth.session-token`).
 - **Deployment deletion**: Worker now deletes DB records on successful undeploy (not soft-delete to STOPPED).
 

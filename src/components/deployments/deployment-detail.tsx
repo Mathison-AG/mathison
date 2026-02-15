@@ -16,6 +16,7 @@ import {
   Tag,
   Hash,
   Globe,
+  Network,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -266,6 +267,15 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                     value={deployment.url}
                     icon={<Globe className="size-3" />}
                     isLink
+                  />
+                )}
+                {deployment.ports.length > 0 && (
+                  <DetailRow
+                    label="Ports"
+                    value={deployment.ports
+                      .map((p) => `${p.port}${p.name ? ` (${p.name})` : ""}`)
+                      .join(", ")}
+                    icon={<Network className="size-3" />}
                   />
                 )}
                 {deployment.errorMessage && (

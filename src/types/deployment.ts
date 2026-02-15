@@ -13,6 +13,15 @@ export interface PodResources {
   containers: ContainerResources[];
 }
 
+// ─── Service port types ──────────────────────────────────
+
+export interface ServicePort {
+  port: number;
+  targetPort: number | string;
+  name?: string;
+  protocol: string;
+}
+
 // ─── Deployment (API response shape) ──────────────────────
 
 export interface Deployment {
@@ -29,6 +38,7 @@ export interface Deployment {
   config: Record<string, unknown>;
   dependsOn: string[];
   resources: PodResources[];
+  ports: ServicePort[];
   recipe: {
     slug: string;
     displayName: string;
