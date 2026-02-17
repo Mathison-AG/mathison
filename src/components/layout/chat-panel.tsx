@@ -98,9 +98,9 @@ function ChatPanelInner() {
                   <Bot className="size-6 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="font-medium">Chat with Mathison</p>
+                  <p className="font-medium">Hi! I&apos;m Mathison</p>
                   <p className="text-sm text-muted-foreground">
-                    Deploy services, check status, or manage your apps.
+                    I can help you find and set up apps — or fix anything that&apos;s not working right. What are you looking for today?
                   </p>
                 </div>
               </div>

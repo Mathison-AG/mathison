@@ -17,7 +17,52 @@ import {
 
 import type { ConfigSchema, AiHints, RecipeCreateInput } from "@/types/recipe";
 
-// ─── Helpers ─────────────────────────────────────────────
+// ─── Time helpers ────────────────────────────────────────
+
+/** Simple relative time formatter (e.g., "2 days ago") */
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days > 1 ? "s" : ""} ago`;
+  const months = Math.floor(days / 30);
+  return `${months} month${months > 1 ? "s" : ""} ago`;
+}
+
+// ─── Status helpers ──────────────────────────────────────
+
+/** Translate internal status to consumer-friendly label */
+function consumerStatusLabel(status: string, healthy: boolean): string {
+  switch (status) {
+    case "RUNNING":
+      return healthy ? "Running and healthy" : "Running but needs attention";
+    case "PENDING":
+    case "DEPLOYING":
+      return "Setting up...";
+    case "FAILED":
+      return "Something went wrong";
+    case "STOPPED":
+      return "Stopped";
+    case "DELETING":
+      return "Being removed...";
+    default:
+      return status.toLowerCase();
+  }
+}
+
+/** Check if pods are healthy (all running, no recent restarts) */
+function arePodHealthy(
+  pods: Array<{ status: string; restarts: number }>
+): boolean {
+  if (pods.length === 0) return false;
+  return pods.every((p) => p.status === "Running" && p.restarts < 3);
+}
+
+// ─── K8s helpers (internal only) ─────────────────────────
 
 /** Get live K8s pod status for a Helm release */
 async function getK8sPodStatus(
@@ -51,19 +96,107 @@ async function getK8sPodLogs(
     return await getReleaseLogs(namespace, helmRelease, lines);
   } catch (err) {
     console.error(`[getK8sPodLogs] Failed for ${helmRelease}:`, err);
-    return `Failed to retrieve logs for '${helmRelease}': ${err instanceof Error ? err.message : "Unknown error"}`;
+    return `Failed to retrieve logs: ${err instanceof Error ? err.message : "Unknown error"}`;
   }
 }
 
-// ─── Tools ──────────────────────────────────────────────
+// ─── Log diagnosis helpers ───────────────────────────────
+
+interface DiagnosisResult {
+  appName: string;
+  diagnosis: string;
+  suggestion: string | null;
+}
+
+/** Analyze raw logs and produce a plain-English diagnosis */
+function analyzeLogs(appName: string, logs: string, restarts: number): DiagnosisResult {
+  const lines = logs.split("\n").filter(Boolean);
+  const lowerLogs = logs.toLowerCase();
+
+  // Check for common error patterns
+  if (lowerLogs.includes("out of memory") || lowerLogs.includes("oom") || lowerLogs.includes("memory limit")) {
+    return {
+      appName,
+      diagnosis: `${appName} is running out of memory. It's been restarting because it needs more resources to handle its workload.`,
+      suggestion: "changeAppSettings to increase resources",
+    };
+  }
+
+  if (lowerLogs.includes("connection refused") || lowerLogs.includes("econnrefused")) {
+    return {
+      appName,
+      diagnosis: `${appName} is having trouble connecting to another app it depends on. The other app might still be starting up or may have stopped.`,
+      suggestion: "Check the status of dependent apps with listMyApps",
+    };
+  }
+
+  if (lowerLogs.includes("connection timeout") || lowerLogs.includes("etimedout") || lowerLogs.includes("timed out")) {
+    return {
+      appName,
+      diagnosis: `${appName} is experiencing slow connections. It's trying to reach something that isn't responding quickly enough.`,
+      suggestion: "Wait a minute and check again, or restart the app",
+    };
+  }
+
+  if (lowerLogs.includes("permission denied") || lowerLogs.includes("access denied") || lowerLogs.includes("authentication failed")) {
+    return {
+      appName,
+      diagnosis: `${appName} is having trouble with its credentials. This usually means a password or access token needs to be reset.`,
+      suggestion: "Try reinstalling the app to regenerate credentials",
+    };
+  }
+
+  if (lowerLogs.includes("disk full") || lowerLogs.includes("no space left") || lowerLogs.includes("enospc")) {
+    return {
+      appName,
+      diagnosis: `${appName} has run out of storage space. It can't save any more data until space is freed up.`,
+      suggestion: "changeAppSettings to increase storage, or clean up old data",
+    };
+  }
+
+  if (lowerLogs.includes("crashloopbackoff") || lowerLogs.includes("crash loop")) {
+    return {
+      appName,
+      diagnosis: `${appName} keeps crashing and restarting. This usually means it can't start properly — often due to a configuration issue or a missing dependency.`,
+      suggestion: "Check if all dependent apps are running, then try reinstalling",
+    };
+  }
+
+  if (restarts > 0) {
+    return {
+      appName,
+      diagnosis: `${appName} has restarted ${restarts} time${restarts > 1 ? "s" : ""} recently. The logs don't show a clear error, but it may be under heavy load or experiencing intermittent issues.`,
+      suggestion: restarts >= 3
+        ? "changeAppSettings to give it more resources"
+        : "Monitor it for a bit — occasional restarts can be normal",
+    };
+  }
+
+  // No obvious issues found
+  if (lines.length < 5) {
+    return {
+      appName,
+      diagnosis: `${appName} doesn't have many logs yet. It may have just started or is running very quietly.`,
+      suggestion: null,
+    };
+  }
+
+  return {
+    appName,
+    diagnosis: `${appName} looks like it's running normally. The logs don't show any obvious issues.`,
+    suggestion: null,
+  };
+}
+
+// ─── Tools ───────────────────────────────────────────────
 
 export function getTools(tenantId: string, workspaceId: string) {
   return {
-    // ── Workspace tools ───────────────────────────────────
+    // ── Workspace tools (hidden — only surface when asked) ──
 
     listWorkspaces: tool({
       description:
-        "List all workspaces in the user's account. Each workspace is an isolated environment with its own services.",
+        "List all the user's projects/environments. Only use this when the user explicitly asks about workspaces or projects.",
       inputSchema: z.object({}),
       execute: async () => {
         try {
@@ -72,30 +205,27 @@ export function getTools(tenantId: string, workspaceId: string) {
             workspaces: workspaces.map((w) => ({
               id: w.id,
               name: w.name,
-              slug: w.slug,
-              status: w.status,
-              serviceCount: w.deploymentCount,
+              appCount: w.deploymentCount,
               isActive: w.id === workspaceId,
             })),
-            activeWorkspaceId: workspaceId,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[listWorkspaces]", { tenantId }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
     createWorkspace: tool({
       description:
-        "Create a new workspace. Workspaces are isolated environments where services are deployed.",
+        "Create a new project/environment for organizing apps. Only use when the user explicitly asks.",
       inputSchema: z.object({
         name: z
           .string()
           .min(1)
           .max(100)
-          .describe("Name for the new workspace, e.g. 'Staging' or 'Production'"),
+          .describe("Name for the new project, e.g. 'Testing' or 'Production'"),
       }),
       execute: async ({ name }) => {
         try {
@@ -104,27 +234,25 @@ export function getTools(tenantId: string, workspaceId: string) {
             name,
           });
           return {
-            workspaceId: result.id,
             name: result.name,
-            slug: result.slug,
-            message: `Workspace '${result.name}' created successfully. Switch to it to start deploying services.`,
+            message: `Project '${result.name}' created! Switch to it using the project selector in the sidebar to start installing apps there.`,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[createWorkspace]", { tenantId, name }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
     deleteWorkspace: tool({
       description:
-        "Delete a workspace and all its services. This is destructive and cannot be undone. The user will be shown a confirmation dialog.",
+        "Delete a project and all its apps. Only use when the user explicitly asks. The user will see a confirmation dialog.",
       inputSchema: z.object({
-        workspaceId: z.string().describe("The workspace ID to delete"),
+        workspaceId: z.string().describe("The project ID to delete"),
         workspaceName: z
           .string()
-          .describe("The name of the workspace (shown in the confirmation dialog)"),
+          .describe("The name of the project being deleted"),
       }),
       needsApproval: true,
       execute: async ({ workspaceId: wsId }) => {
@@ -138,37 +266,37 @@ export function getTools(tenantId: string, workspaceId: string) {
           console.error("[deleteWorkspace]", { workspaceId: wsId, tenantId }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
-    // ── Catalog tools ─────────────────────────────────────
+    // ── Finding apps ─────────────────────────────────────
 
-    searchCatalog: tool({
+    findApps: tool({
       description:
-        "Search the service catalog for available services to deploy. Use this when the user asks what's available or wants to find a specific type of service.",
+        "Search for apps that match what the user is looking for. Search by problem description, not just app name. For example: 'automate tasks', 'monitor websites', 'store files'.",
       inputSchema: z.object({
-        query: z.string().describe("Natural language search query"),
+        query: z.string().describe("What the user is looking for — describe the problem or need"),
         category: z
           .string()
           .optional()
           .describe(
             "Filter by category: database, automation, monitoring, storage, analytics"
-          )
+          ),
       }),
       execute: async ({ query, category }) => {
         try {
           const results = await searchRecipes(query, category);
           return results.map((r) => ({
             slug: r.slug,
-            displayName: r.displayName,
-            description: r.description,
+            name: r.displayName,
+            tagline: r.shortDescription || r.description,
             category: r.category,
-            tier: r.tier
+            popular: r.installCount > 0,
+            installCount: r.installCount,
           }));
         } catch (error) {
-          // Fallback to text search if embeddings aren't available
           console.error(
-            "[searchCatalog] Semantic search failed, falling back to text search:",
+            "[findApps] Semantic search failed, falling back to text search:",
             error
           );
           const recipes = await prisma.recipe.findMany({
@@ -178,358 +306,352 @@ export function getTools(tenantId: string, workspaceId: string) {
               OR: [
                 { displayName: { contains: query, mode: "insensitive" } },
                 { description: { contains: query, mode: "insensitive" } },
-                { tags: { has: query.toLowerCase() } }
-              ]
+                { shortDescription: { contains: query, mode: "insensitive" } },
+                { tags: { has: query.toLowerCase() } },
+                { useCases: { hasSome: [query.toLowerCase()] } },
+              ],
             },
             select: {
               slug: true,
               displayName: true,
               description: true,
+              shortDescription: true,
               category: true,
-              tier: true
+              installCount: true,
             },
             orderBy: { displayName: "asc" },
-            take: 10
+            take: 10,
           });
-          return recipes;
+          return recipes.map((r) => ({
+            slug: r.slug,
+            name: r.displayName,
+            tagline: r.shortDescription || r.description,
+            category: r.category,
+            popular: r.installCount > 0,
+            installCount: r.installCount,
+          }));
         }
-      }
+      },
     }),
 
-    getRecipe: tool({
+    getAppInfo: tool({
       description:
-        "Get full details about a specific service recipe including its configuration options.",
+        "Get details about a specific app — what it does, what it's good for, and how to set it up.",
       inputSchema: z.object({
-        slug: z.string().describe("Recipe slug, e.g. 'postgresql'")
+        slug: z.string().describe("App identifier, e.g. 'n8n' or 'postgresql'"),
       }),
       execute: async ({ slug }) => {
         const recipe = await getRecipe(slug);
         if (!recipe) {
-          return { error: `Recipe '${slug}' not found` };
+          return { error: `App '${slug}' not found in our catalog.` };
         }
         return {
           slug: recipe.slug,
-          displayName: recipe.displayName,
+          name: recipe.displayName,
           description: recipe.description,
+          tagline: recipe.shortDescription,
+          useCases: recipe.useCases,
+          gettingStarted: recipe.gettingStarted,
           category: recipe.category,
-          tier: recipe.tier,
-          configSchema: recipe.configSchema,
-          dependencies: recipe.dependencies,
-          resourceDefaults: recipe.resourceDefaults,
-          tags: recipe.tags
+          websiteUrl: recipe.websiteUrl,
+          documentationUrl: recipe.documentationUrl,
+          needsOtherApps: recipe.dependencies.length > 0
+            ? recipe.dependencies.map((d) => d.service)
+            : null,
         };
-      }
+      },
     }),
 
-    // ── Deployment tools ──────────────────────────────────
+    // ── Installing apps ──────────────────────────────────
 
-    deployService: tool({
+    installApp: tool({
       description:
-        "Deploy a service from the catalog to the user's active workspace. This will install the service and all its dependencies.",
+        "Install an app for the user. Uses sensible defaults automatically. If the app needs other apps (like a database), they'll be set up automatically too.",
       inputSchema: z.object({
-        recipeSlug: z
+        appSlug: z
           .string()
-          .describe("The recipe to deploy, e.g. 'postgresql'"),
+          .describe("The app to install, e.g. 'n8n' or 'postgresql'"),
         name: z
           .string()
           .optional()
-          .describe("Custom name for this deployment, e.g. 'my-database'"),
+          .describe("Custom name for this app (optional — a good default is chosen automatically)"),
         config: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe(
-            "Configuration overrides matching the recipe's config schema"
-          )
+          .describe("Custom settings (optional — sensible defaults are used)"),
       }),
-      execute: async ({ recipeSlug, name, config }) => {
+      execute: async ({ appSlug, name, config }) => {
         try {
           const result = await initiateDeployment({
             tenantId,
             workspaceId,
-            recipeSlug,
+            recipeSlug: appSlug,
             name,
             config,
           });
 
           return {
-            deploymentId: result.deploymentId,
-            name: result.name,
-            status: result.status,
-            message: result.message,
+            appId: result.deploymentId,
+            appName: result.name,
+            status: "installing",
+            message: `${result.name} is being set up now. This usually takes about a minute.`,
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[deployService]", { recipeSlug, tenantId, workspaceId }, err);
+          console.error("[installApp]", { appSlug, tenantId, workspaceId }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
-    getStackStatus: tool({
+    // ── Checking app status ──────────────────────────────
+
+    listMyApps: tool({
       description:
-        "Get the status of all deployed services in the user's active workspace.",
+        "See all the user's installed apps and whether they're running properly.",
       inputSchema: z.object({}),
       execute: async () => {
         const deployments = await prisma.deployment.findMany({
           where: { workspaceId },
           include: {
             recipe: {
-              select: { displayName: true, slug: true, category: true }
-            }
+              select: { displayName: true, slug: true, category: true },
+            },
           },
-          orderBy: { createdAt: "desc" }
+          orderBy: { createdAt: "desc" },
         });
 
         if (deployments.length === 0) {
           return {
-            message: "No services deployed yet in this workspace.",
-            services: [] as Array<{
-              deploymentId: string;
-              name: string;
-              recipe: string;
-              recipeSlug: string;
-              category: string;
+            message: "You don't have any apps installed yet. Want me to help you find something?",
+            apps: [] as Array<{
+              appId: string;
+              appName: string;
+              displayName: string;
               status: string;
+              statusLabel: string;
               url: string | null;
-              pods: Array<{
-                name: string;
-                status: string;
-                restarts: number;
-              }>;
-              createdAt: string;
-            }>
+              installedAt: string;
+              healthy: boolean;
+            }>,
           };
         }
 
-        const services = await Promise.all(
+        const apps = await Promise.all(
           deployments.map(async (d) => {
             const k8sStatus = await getK8sPodStatus(d.namespace, d.helmRelease);
-            const config = d.config as Record<string, unknown>;
+            const healthy = arePodHealthy(k8sStatus.pods);
             return {
-              deploymentId: d.id,
-              name: d.name,
-              recipe: d.recipe.displayName,
-              recipeSlug: d.recipe.slug,
-              category: d.recipe.category,
-              status: d.status as string,
+              appId: d.id,
+              appName: d.name,
+              displayName: d.recipe.displayName,
+              status: d.status === "RUNNING" ? (healthy ? "running" : "running") : d.status.toLowerCase(),
+              statusLabel: consumerStatusLabel(d.status, healthy),
               url: d.url,
-              appVersion: d.appVersion,
-              chartVersion: d.chartVersion,
-              resources: {
-                cpu: config.cpu_request ? `${config.cpu_request} / ${config.cpu_limit ?? "—"}` : null,
-                memory: config.memory_request ? `${config.memory_request} / ${config.memory_limit ?? "—"}` : null,
-              },
-              pods: k8sStatus.pods,
-              createdAt: d.createdAt.toISOString()
+              installedAt: timeAgo(d.createdAt),
+              healthy: d.status === "RUNNING" ? healthy : false,
             };
           })
         );
 
-        return { services };
-      }
+        return { apps };
+      },
     }),
 
-    getServiceDetail: tool({
+    getAppStatus: tool({
       description:
-        "Get detailed information about a specific deployed service including resource usage and connection details.",
+        "Check the detailed status of a specific installed app — is it running well, when was it installed, and how to access it.",
       inputSchema: z.object({
-        deploymentId: z.string().describe("The deployment ID")
+        appId: z.string().describe("The app's ID"),
       }),
-      execute: async ({ deploymentId }) => {
+      execute: async ({ appId }) => {
         const deployment = await prisma.deployment.findFirst({
-          where: { id: deploymentId, tenantId },
+          where: { id: appId, tenantId },
           include: {
             recipe: {
               select: {
                 displayName: true,
                 slug: true,
                 category: true,
-                configSchema: true,
-                resourceDefaults: true,
-                ingressConfig: true
-              }
-            }
-          }
+                gettingStarted: true,
+              },
+            },
+          },
         });
 
         if (!deployment) {
-          return { error: "Deployment not found" };
+          return { error: "App not found" };
         }
 
         const k8sStatus = await getK8sPodStatus(
           deployment.namespace,
           deployment.helmRelease
         );
+        const healthy = arePodHealthy(k8sStatus.pods);
 
-        const config = deployment.config as Record<string, unknown>;
         return {
-          deploymentId: deployment.id,
-          name: deployment.name,
-          recipe: deployment.recipe.displayName,
-          recipeSlug: deployment.recipe.slug,
-          status: deployment.status as string,
+          appId: deployment.id,
+          appName: deployment.name,
+          displayName: deployment.recipe.displayName,
+          status: deployment.status === "RUNNING" ? (healthy ? "running" : "running") : deployment.status.toLowerCase(),
+          statusLabel: consumerStatusLabel(deployment.status, healthy),
           url: deployment.url,
-          appVersion: deployment.appVersion,
-          chartVersion: deployment.chartVersion,
-          revision: deployment.revision,
-          namespace: deployment.namespace,
-          helmRelease: deployment.helmRelease,
-          config,
-          resources: {
-            cpuRequest: config.cpu_request ?? null,
-            cpuLimit: config.cpu_limit ?? null,
-            memoryRequest: config.memory_request ?? null,
-            memoryLimit: config.memory_limit ?? null,
-          },
-          pods: k8sStatus.pods,
-          resourceDefaults: deployment.recipe.resourceDefaults as Record<
-            string,
-            unknown
-          >,
-          dependsOn: deployment.dependsOn,
-          errorMessage: deployment.errorMessage,
-          createdAt: deployment.createdAt.toISOString(),
-          updatedAt: deployment.updatedAt.toISOString()
+          healthy: deployment.status === "RUNNING" ? healthy : false,
+          installedAt: timeAgo(deployment.createdAt),
+          gettingStarted: deployment.recipe.gettingStarted,
+          errorMessage: deployment.status === "FAILED"
+            ? "This app had trouble starting. You can try reinstalling it or ask me to diagnose the issue."
+            : null,
         };
-      }
+      },
     }),
 
-    getServiceLogs: tool({
+    // ── Diagnosing issues ────────────────────────────────
+
+    diagnoseApp: tool({
       description:
-        "Get recent logs from a deployed service. Useful for debugging.",
+        "Look at an app's internal logs to figure out what's wrong. Read the logs yourself and explain the issue in plain language — never show raw logs to the user.",
       inputSchema: z.object({
-        deploymentId: z.string().describe("The deployment ID"),
-        lines: z
-          .number()
-          .optional()
-          .default(50)
-          .describe("Number of log lines to retrieve")
+        appId: z.string().describe("The app's ID to diagnose"),
       }),
-      execute: async ({ deploymentId, lines }) => {
+      execute: async ({ appId }) => {
         const deployment = await prisma.deployment.findFirst({
-          where: { id: deploymentId, tenantId },
+          where: { id: appId, tenantId },
           select: {
             namespace: true,
             helmRelease: true,
             name: true,
-            status: true
-          }
+            status: true,
+            recipe: { select: { displayName: true } },
+          },
         });
 
         if (!deployment) {
-          return { error: "Deployment not found" };
+          return { error: "App not found" };
         }
 
         if (deployment.status === "PENDING") {
           return {
-            logs: `Service '${deployment.name}' is still pending deployment — no logs available yet.`
+            appName: deployment.recipe.displayName,
+            diagnosis: `${deployment.recipe.displayName} is still being set up. Give it a minute and check back.`,
+            suggestion: null,
           };
         }
 
+        // Get pod status for restart info
+        const k8sStatus = await getK8sPodStatus(
+          deployment.namespace,
+          deployment.helmRelease
+        );
+        const totalRestarts = k8sStatus.pods.reduce((sum, p) => sum + p.restarts, 0);
+
+        // Get logs
         const logs = await getK8sPodLogs(
           deployment.namespace,
           deployment.helmRelease,
-          lines
+          100
         );
 
-        return { name: deployment.name, logs };
-      }
+        return analyzeLogs(
+          deployment.recipe.displayName,
+          logs,
+          totalRestarts
+        );
+      },
     }),
 
-    // ── Management tools ──────────────────────────────────
+    // ── Managing apps ────────────────────────────────────
 
-    updateService: tool({
+    changeAppSettings: tool({
       description:
-        "Update the configuration of a running service. Use this to change resources (cpu_request, memory_request, cpu_limit, memory_limit), storage, or any other config field. Call getServiceDetail first to see current config and getRecipe to see available config options. Only include the fields you want to change — existing values are preserved.",
+        "Change settings for an installed app. Map user requests to config changes. For example, 'make it faster' → increase CPU/memory, 'give it more storage' → increase storage. Call getAppInfo first if you need to see what settings are available.",
       inputSchema: z.object({
-        deploymentId: z.string().describe("The deployment ID"),
+        appId: z.string().describe("The app's ID to update"),
         config: z
           .record(z.string(), z.unknown())
           .describe(
-            "Configuration values to update. Common fields: cpu_request (e.g. '100m'), memory_request (e.g. '256Mi'), cpu_limit (e.g. '500m'), memory_limit (e.g. '1Gi'). Only include fields you want to change."
-          )
+            "Settings to change. Only include the settings you want to modify — everything else stays the same."
+          ),
       }),
-      execute: async ({ deploymentId, config }) => {
+      execute: async ({ appId, config }) => {
         try {
           const result = await initiateUpgrade({
             tenantId,
-            deploymentId,
+            deploymentId: appId,
             config,
           });
 
           return {
-            deploymentId: result.deploymentId,
-            status: result.status,
-            message: result.message,
+            appId: result.deploymentId,
+            status: "updating",
+            message: "Applying your changes now. This usually takes about 30 seconds.",
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[updateService]", { deploymentId, tenantId }, err);
+          console.error("[changeAppSettings]", { appId, tenantId }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
-    removeService: tool({
+    uninstallApp: tool({
       description:
-        "Remove a deployed service from the user's workspace. The user will be shown a confirmation dialog in the UI before the removal proceeds. Call this when the user wants to delete or remove a service.",
+        "Remove an installed app. Always mention that any data stored in the app will be lost. The user will see a confirmation dialog before anything happens.",
       inputSchema: z.object({
-        deploymentId: z.string().describe("The deployment ID to remove"),
-        serviceName: z
+        appId: z.string().describe("The app's ID to remove"),
+        appName: z
           .string()
-          .describe(
-            "The human-readable name of the service being removed (shown in the confirmation dialog)"
-          )
+          .describe("The name of the app being removed (shown in confirmation)"),
       }),
       needsApproval: true,
-      execute: async ({ deploymentId }) => {
+      execute: async ({ appId }) => {
         try {
           const result = await initiateRemoval({
             tenantId,
-            deploymentId,
+            deploymentId: appId,
           });
 
           return {
-            deploymentId: result.deploymentId,
-            status: result.status,
-            message: result.message,
+            appId: result.deploymentId,
+            status: "removing",
+            message: "The app is being removed now.",
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error("[removeService]", { deploymentId, tenantId }, err);
+          console.error("[uninstallApp]", { appId, tenantId }, err);
           return { error: message };
         }
-      }
+      },
     }),
 
-    // ── Catalog management ────────────────────────────────
+    // ── Requesting new apps ──────────────────────────────
 
-    createRecipe: tool({
+    requestApp: tool({
       description:
-        "Create a new service recipe in the catalog. Use this when a requested service isn't available yet.",
+        "Request a new app to be added to the store. Use when the user wants something we don't have in the catalog.",
       inputSchema: z.object({
-        slug: z.string().describe("URL-friendly identifier, e.g. 'grafana'"),
+        slug: z.string().describe("Short identifier for the app, e.g. 'grafana'"),
         displayName: z.string().describe("Human-readable name, e.g. 'Grafana'"),
-        description: z.string().describe("What this service does"),
+        description: z.string().describe("What this app does, in plain language"),
         category: z
           .string()
           .describe(
             "Category: database, automation, monitoring, storage, analytics"
           ),
-        chartUrl: z.string().describe("Package source URL or repository reference"),
-        chartVersion: z.string().optional().describe("Specific chart version"),
+        chartUrl: z.string().describe("Package source URL"),
+        chartVersion: z.string().optional().describe("Specific version"),
         valuesTemplate: z
           .string()
           .optional()
-          .describe("Configuration template for the service"),
+          .describe("Configuration template"),
         configSchema: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe("Config fields the user can customize"),
+          .describe("Available settings"),
         aiHints: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe("AI metadata: summary, whenToSuggest, pairsWellWith")
+          .describe("AI metadata: summary, whenToSuggest, pairsWellWith"),
       }),
       execute: async (params) => {
         const input: RecipeCreateInput = {
@@ -541,67 +663,16 @@ export function getTools(tenantId: string, workspaceId: string) {
           chartVersion: params.chartVersion,
           valuesTemplate: params.valuesTemplate,
           configSchema: params.configSchema as ConfigSchema | undefined,
-          aiHints: params.aiHints as AiHints | undefined
+          aiHints: params.aiHints as AiHints | undefined,
         };
 
         const recipe = await createRecipe(input);
 
         return {
-          slug: recipe.slug,
-          displayName: recipe.displayName,
-          status: recipe.status,
-          message: `Recipe '${recipe.displayName}' created as ${recipe.status} (${recipe.tier}). It can be published by an admin.`
+          appName: recipe.displayName,
+          message: `Great news! ${recipe.displayName} has been submitted for review. Once approved, it'll be available in the app store.`,
         };
-      }
+      },
     }),
-
-    // ── External search (Artifact Hub) ────────────────────
-
-    searchHelmCharts: tool({
-      description:
-        "Search for available service packages online. Use as fallback when the catalog doesn't have what the user needs.",
-      inputSchema: z.object({
-        query: z.string().describe("Search query for Artifact Hub")
-      }),
-      execute: async ({ query }) => {
-        try {
-          const url = `https://artifacthub.io/api/v1/packages/search?ts_query_web=${encodeURIComponent(query)}&kind=0&limit=10`;
-          const res = await fetch(url, {
-            headers: { Accept: "application/json" }
-          });
-
-          if (!res.ok) {
-            return {
-              error: `Artifact Hub search failed (HTTP ${res.status})`
-            };
-          }
-
-          const data = (await res.json()) as {
-            packages?: Array<{
-              name: string;
-              normalized_name: string;
-              description: string;
-              version: string;
-              repository: { name: string; url: string };
-              package_id: string;
-            }>;
-          };
-
-          const packages = data.packages ?? [];
-
-          return packages.slice(0, 10).map((pkg) => ({
-            name: pkg.name,
-            repo: pkg.repository?.name,
-            repoUrl: pkg.repository?.url,
-            description: pkg.description,
-            version: pkg.version,
-            url: `https://artifacthub.io/packages/helm/${pkg.repository?.name}/${pkg.name}`
-          }));
-        } catch (error) {
-          console.error("[searchHelmCharts]", error);
-          return { error: "Failed to search Artifact Hub" };
-        }
-      }
-    })
   };
 }
