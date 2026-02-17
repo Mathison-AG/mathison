@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Download, Check } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -26,6 +27,7 @@ export function AppCard({
   isInstalled = false,
   onInstall
 }: AppCardProps) {
+  const router = useRouter();
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
   const isFeatured = variant === "featured";
 
@@ -80,14 +82,17 @@ export function AppCard({
         {/* Footer: Install Button + Count */}
         <div className="flex items-center gap-3 w-full mt-auto pt-1">
           {isInstalled ? (
-            <Link
-              href="/apps"
-              onClick={(e) => e.stopPropagation()}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium h-8 px-3 hover:bg-green-500/5 transition-colors"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                router.push("/apps");
+              }}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium h-8 px-3 hover:bg-green-500/5 transition-colors cursor-pointer"
             >
               <Check className="size-3.5" />
               Installed
-            </Link>
+            </button>
           ) : (
             <button
               onClick={handleGetClick}
