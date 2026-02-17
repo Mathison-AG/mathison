@@ -55,6 +55,10 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 - **Session shape**: `session.user.{id, tenantId, role, name, email}` â€” augmented via `src/types/next-auth.d.ts`.
 - **Auth guard**: `const session = await auth(); if (!session?.user) return 401;`
 - **Signup provisions default workspace**: Creates tenant + default workspace + K8s namespace. Fire-and-forget K8s provisioning. Signup still succeeds if K8s unavailable.
+- **Signup auto-generates workspace name**: Derived from user's name (`"{name}'s workspace"`). No workspace field in signup form.
+- **Auto-login after signup**: Signup page calls `signIn("credentials", ...)` after successful registration, then redirects to `/welcome`.
+- **Onboarding flow**: New users land on `/welcome` (category picker). `onboardingCompletedAt` on User model tracks completion. Dashboard layout redirects to `/welcome` if null. Welcome page in `(onboarding)` route group (separate from `(dashboard)` to avoid redirect loops).
+- **First-install celebration**: `useFirstInstall` hook (localStorage `mathison-has-installed-app`). Shows confetti + special success modal on first install.
 - **Test user**: admin@mathison.dev / admin1234, workspace: mathison-dev
 
 ## AI SDK v6
@@ -137,7 +141,8 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 
 - **Font**: Inter (not Geist). CSS var `--font-sans`.
 - **Providers**: ThemeProvider > QueryClientProvider > TooltipProvider in `src/components/providers.tsx`.
-- **Dashboard layout**: `(dashboard)` route group = `/`, `/catalog`, `/deployments`, `/settings`.
+- **Dashboard layout**: `(dashboard)` route group = `/`, `/catalog`, `/apps`, `/settings`. `(onboarding)` route group = `/welcome`.
+- **Middleware excludes static assets**: `/icons/*` and common image extensions excluded from auth middleware matcher. Without this, unauthenticated pages (login/signup) can't load public images.
 - **Theme hydration**: `useSyncExternalStore` for mounted detection (not useState + useEffect).
 - **Sheet accessibility**: Add `<SheetTitle className="sr-only">` + `aria-describedby={undefined}`.
 - **Chat events**: `chatEvents.openWithMessage(msg)` from `@/lib/events` â€” cross-component communication.

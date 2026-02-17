@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { Sparkles, X } from "lucide-react";
 
 import { useCatalog } from "@/hooks/use-catalog";
 import { useDeployments } from "@/hooks/use-deployments";
@@ -11,6 +13,7 @@ import { CategoryRow } from "@/components/store/category-row";
 import { CategoryFilters } from "@/components/store/category-filters";
 import { AppGrid } from "@/components/store/app-grid";
 import { InstallModal } from "@/components/store/install-modal";
+import { Button } from "@/components/ui/button";
 
 import type { Recipe } from "@/types/recipe";
 
@@ -25,8 +28,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_ORDER = ["automation", "monitoring", "storage", "database", "analytics"];
 
 export default function AppStorePage() {
+  const searchParams = useSearchParams();
+  const initialCategory = searchParams.get("category") ?? "all";
+  const fromWelcome = searchParams.has("category");
+
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [category, setCategory] = useState(initialCategory);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(fromWelcome);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
@@ -125,6 +133,25 @@ export default function AppStorePage() {
         </p>
         <StoreSearch value={search} onChange={handleSearchChange} />
       </div>
+
+      {/* Welcome banner for users coming from onboarding */}
+      {showWelcomeBanner && (
+        <div className="relative flex items-center gap-3 rounded-xl bg-primary/5 border border-primary/10 px-4 py-3">
+          <Sparkles className="size-5 text-primary shrink-0" />
+          <p className="text-sm text-foreground">
+            Ready to install your first app? Just click <strong>Get</strong> on
+            any app below!
+          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-2 size-6"
+            onClick={() => setShowWelcomeBanner(false)}
+          >
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      )}
 
       {isFiltered ? (
         /* Filtered view: category chips + flat grid */

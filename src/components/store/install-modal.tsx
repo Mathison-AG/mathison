@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Loader2, Download, AlertCircle } from "lucide-react";
+import { Download, AlertCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { InstallProgress } from "./install-progress";
 import { InstallSuccess } from "./install-success";
+import { FirstInstallCelebration } from "@/components/onboarding/first-install-celebration";
+import { useFirstInstall } from "@/hooks/use-first-install";
 
 import type { Recipe } from "@/types/recipe";
 import type { Deployment } from "@/types/deployment";
@@ -40,6 +42,8 @@ export function InstallModal({
   onConfirm,
   onReset,
 }: InstallModalProps) {
+  const { isFirstInstall, markInstalled } = useFirstInstall();
+
   if (!recipe) return null;
 
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
@@ -50,10 +54,31 @@ export function InstallModal({
     if (!nextOpen) {
       // If install is complete (success/error), reset on close
       if (phase === "success" || phase === "error" || phase === "idle") {
+        if (phase === "success" && isFirstInstall) {
+          markInstalled();
+        }
         onReset();
       }
       onOpenChange(false);
     }
+  }
+
+  // First install celebration view
+  if (phase === "success" && isFirstInstall) {
+    return (
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
+          <DialogTitle className="sr-only">
+            {recipe.displayName} installed — your first app!
+          </DialogTitle>
+          <FirstInstallCelebration
+            appName={recipe.displayName}
+            appUrl={deployment?.url ?? null}
+            gettingStarted={recipe.gettingStarted}
+          />
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   // Success view

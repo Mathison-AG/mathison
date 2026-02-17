@@ -76,7 +76,7 @@ export function DashboardShell({
       </div>
 
       {/* Chat panel */}
-      <ChatPanel />
+      <ChatPanel userName={userName} />
     </div>
   );
 }

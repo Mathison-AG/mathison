@@ -30,7 +30,8 @@ Kind Cluster (Kubernetes)
 ai-k8s/                          # Workspace root = Next.js app
 ├── src/
 │   ├── app/                     # Next.js App Router
-│   │   ├── (auth)/              # Login + signup pages
+│   │   ├── (auth)/              # Login + signup pages (split-screen layout)
+│   │   ├── (onboarding)/       # Welcome/first-run flow (minimal layout, auth required)
 │   │   ├── (dashboard)/         # Protected pages (/, /catalog, /apps, /deployments→redirect, /settings)
 │   │   └── api/                 # API routes
 │   │       ├── auth/            # NextAuth + signup
@@ -38,6 +39,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │       ├── chat/            # AI agent streaming endpoint
 │   │       ├── apps/            # One-click install endpoint
 │   │       ├── deployments/     # CRUD + logs (workspace-scoped)
+│   │       ├── onboarding/      # Mark onboarding complete
 │   │       ├── workspaces/      # Workspace CRUD + switch
 │   │       └── stack/           # Canvas data (nodes + edges)
 │   │
@@ -45,6 +47,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── canvas/              # React Flow: stack-canvas, service-node, dependency-edge
 │   │   ├── catalog/             # Recipe cards, grid, filters, detail
 │   │   ├── store/               # App Store: cards, grid, featured, install flow (modal, progress, success)
+│   │   ├── onboarding/          # Welcome categories, first-install celebration
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
 │   │   ├── my-apps/             # My Apps: app-card, app-grid, app-detail, remove-dialog, status-indicator
 │   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer (legacy)

@@ -40,19 +40,22 @@ function EmptyState() {
   return (
     <div className="flex min-h-[400px] items-center justify-center rounded-xl border border-dashed">
       <div className="text-center space-y-4 max-w-sm">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-muted">
-          <AppWindow className="size-8 text-muted-foreground" />
+        <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-primary/10">
+          <AppWindow className="size-8 text-primary" />
         </div>
-        <div className="space-y-1">
-          <h3 className="text-lg font-semibold">No apps installed yet</h3>
-          <p className="text-sm text-muted-foreground">
-            Browse the App Store to find and install your first app.
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold">
+            You haven&apos;t installed any apps yet
+          </h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Browse the App Store to find something useful. Install any app
+            in one click — no technical knowledge required.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild size="lg">
           <Link href="/">
             <Store className="mr-2 size-4" />
-            Browse App Store
+            Browse Apps
           </Link>
         </Button>
       </div>
