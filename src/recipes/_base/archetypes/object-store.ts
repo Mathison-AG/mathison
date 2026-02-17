@@ -25,6 +25,8 @@ import type {
   EnvVar,
   ProbeDefinition,
   ResourceRequirements,
+  DataExportDefinition,
+  DataImportDefinition,
 } from "../types";
 
 // ─── Object Store Descriptor ──────────────────────────────
@@ -86,6 +88,10 @@ export interface ObjectStoreDescriptor<TConfig> {
 
   // Health check
   healthCheck: (ctx: HealthCheckContext<TConfig>) => HealthCheckSpec;
+
+  // Data export/import
+  dataExport?: DataExportDefinition;
+  dataImport?: DataImportDefinition;
 
   // AI
   aiHints: AiHints;
@@ -303,5 +309,7 @@ export function objectStore<TConfig>(
 
     connectionInfo: descriptor.connectionInfo,
     healthCheck: descriptor.healthCheck,
+    dataExport: descriptor.dataExport,
+    dataImport: descriptor.dataImport,
   };
 }

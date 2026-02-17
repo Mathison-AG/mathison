@@ -139,6 +139,31 @@ Redis is ready to use as soon as it's installed. It stores data in memory for ul
     intervalSeconds: 10,
   }),
 
+  dataExport: {
+    description: "Redis RDB snapshot (point-in-time dump of all keys and values)",
+    strategy: {
+      type: "command",
+      command: () => [
+        "sh", "-c",
+        `redis-cli -a "$REDIS_PASSWORD" --rdb /tmp/dump.rdb > /dev/null 2>&1 && cat /tmp/dump.rdb && rm -f /tmp/dump.rdb`,
+      ],
+      contentType: "application/octet-stream",
+      fileExtension: "rdb",
+    },
+  },
+
+  dataImport: {
+    description: "Restore from an RDB dump file",
+    strategy: {
+      type: "command",
+      command: () => [
+        "sh", "-c",
+        `cat > /tmp/restore.rdb && redis-cli -a "$REDIS_PASSWORD" shutdown nosave; cp /tmp/restore.rdb /bitnami/redis/data/dump.rdb`,
+      ],
+    },
+    restartAfterImport: true,
+  },
+
   aiHints: {
     summary:
       "Redis is an in-memory data store for caching, session management, and message brokering",

@@ -21,6 +21,7 @@ import {
 } from "@/lib/workspace/manager";
 import { exportWorkspace } from "@/lib/workspace/export";
 import { validateSnapshot, importWorkspace } from "@/lib/workspace/import";
+import { getDataPortabilityInfo } from "@/lib/deployer/data-export";
 import { getRecipeMetadataOrFallback as getRecipeMeta } from "@/lib/catalog/metadata";
 
 // ─── Time helpers ────────────────────────────────────────
@@ -856,6 +857,110 @@ export function getTools(tenantId: string, workspaceId: string) {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[uninstallApp]", { appId, tenantId }, err);
+          return { error: message };
+        }
+      },
+    }),
+
+    // ── Data Export & Import ────────────────────────────────
+
+    exportAppData: tool({
+      description:
+        "Export/download data from an app (database dump, file archive, etc.). The data can be saved and imported later. Only works for running apps that support data export.",
+      inputSchema: z.object({
+        appId: z.string().describe("The app's ID to export data from"),
+      }),
+      execute: async ({ appId }) => {
+        try {
+          const deployment = await prisma.deployment.findFirst({
+            where: { id: appId, tenantId },
+            select: {
+              name: true,
+              status: true,
+              recipe: { select: { slug: true } },
+            },
+          });
+
+          if (!deployment) {
+            return { error: "App not found" };
+          }
+
+          const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+          const portability = getDataPortabilityInfo(deployment.recipe.slug);
+
+          if (!portability.canExport) {
+            return {
+              error: `${recipeMeta.displayName} doesn't support data export.`,
+            };
+          }
+
+          if (deployment.status !== "RUNNING") {
+            return {
+              error: `${recipeMeta.displayName} must be running to export data. Current status: ${deployment.status.toLowerCase()}.`,
+            };
+          }
+
+          return {
+            message: `${recipeMeta.displayName} supports data export: ${portability.exportDescription}. To download the data, the user can click "Export Data" on the app's detail page, or use the API endpoint: POST /api/deployments/${appId}/export-data`,
+            canExport: true,
+            exportDescription: portability.exportDescription,
+            appName: recipeMeta.displayName,
+            appDetailUrl: `/apps/${appId}`,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[exportAppData]", { appId, tenantId }, err);
+          return { error: message };
+        }
+      },
+    }),
+
+    importAppData: tool({
+      description:
+        "Import/restore data into an app from a previous export. The user needs to upload a file. Only works for running apps that support data import.",
+      inputSchema: z.object({
+        appId: z.string().describe("The app's ID to import data into"),
+      }),
+      execute: async ({ appId }) => {
+        try {
+          const deployment = await prisma.deployment.findFirst({
+            where: { id: appId, tenantId },
+            select: {
+              name: true,
+              status: true,
+              recipe: { select: { slug: true } },
+            },
+          });
+
+          if (!deployment) {
+            return { error: "App not found" };
+          }
+
+          const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+          const portability = getDataPortabilityInfo(deployment.recipe.slug);
+
+          if (!portability.canImport) {
+            return {
+              error: `${recipeMeta.displayName} doesn't support data import.`,
+            };
+          }
+
+          if (deployment.status !== "RUNNING") {
+            return {
+              error: `${recipeMeta.displayName} must be running to import data. Current status: ${deployment.status.toLowerCase()}.`,
+            };
+          }
+
+          return {
+            message: `${recipeMeta.displayName} supports data import: ${portability.importDescription}. The user can upload a data file on the app's detail page using the "Import Data" button.`,
+            canImport: true,
+            importDescription: portability.importDescription,
+            appName: recipeMeta.displayName,
+            appDetailUrl: `/apps/${appId}`,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[importAppData]", { appId, tenantId }, err);
           return { error: message };
         }
       },

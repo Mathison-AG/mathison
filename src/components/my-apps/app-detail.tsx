@@ -22,6 +22,8 @@ import { StatusIndicator } from "./status-indicator";
 import { RemoveDialog } from "./remove-dialog";
 import { OpenButton } from "./open-button";
 import { ConnectionInfoButton } from "./connection-info";
+import { DataExportButton } from "./data-export-button";
+import { DataImportButton } from "./data-import-button";
 import { useMyApp, useRemoveApp, useRestartApp } from "@/hooks/use-my-apps";
 
 // ─── Time formatting ─────────────────────────────────────
@@ -228,6 +230,43 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
             <Card className="p-5">
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown>{gettingStarted}</ReactMarkdown>
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
+
+      {/* Data Management — Export & Import */}
+      {isRunning && app.dataPortability && (app.dataPortability.canExport || app.dataPortability.canImport) && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Data Management</h2>
+            <Card className="p-5">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="space-y-0.5">
+                  <p className="font-medium">Export & import your data</p>
+                  <p className="text-sm text-muted-foreground">
+                    {app.dataPortability.exportDescription ??
+                      `Download or restore your ${app.recipe.displayName} data.`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {app.dataPortability.canExport && (
+                    <DataExportButton
+                      deploymentId={app.id}
+                      appName={app.recipe.displayName}
+                      description={app.dataPortability.exportDescription}
+                    />
+                  )}
+                  {app.dataPortability.canImport && (
+                    <DataImportButton
+                      deploymentId={app.id}
+                      appName={app.recipe.displayName}
+                      description={app.dataPortability.importDescription}
+                    />
+                  )}
+                </div>
               </div>
             </Card>
           </div>

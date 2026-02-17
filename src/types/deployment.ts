@@ -50,12 +50,22 @@ export interface Deployment {
   updatedAt: string;
 }
 
+// ─── Data portability info ────────────────────────────────
+
+export interface DataPortabilityInfo {
+  canExport: boolean;
+  canImport: boolean;
+  exportDescription: string | null;
+  importDescription: string | null;
+}
+
 // ─── Deployment detail (extended) ─────────────────────────
 
 export interface DeploymentDetail extends Deployment {
   recipeId: string;
   recipeVersion: number;
   secretsRef: string | null;
+  dataPortability?: DataPortabilityInfo;
 }
 
 // ─── Resource helpers ─────────────────────────────────────

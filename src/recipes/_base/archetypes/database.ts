@@ -27,6 +27,8 @@ import type {
   EnvVar,
   ProbeDefinition,
   ResourceRequirements,
+  DataExportDefinition,
+  DataImportDefinition,
 } from "../types";
 
 // ─── Database Descriptor ──────────────────────────────────
@@ -90,6 +92,10 @@ export interface DatabaseDescriptor<TConfig> {
 
   // Health check
   healthCheck: (ctx: HealthCheckContext<TConfig>) => HealthCheckSpec;
+
+  // Data export/import
+  dataExport?: DataExportDefinition;
+  dataImport?: DataImportDefinition;
 
   // AI
   aiHints: AiHints;
@@ -277,5 +283,7 @@ export function database<TConfig>(
 
     connectionInfo: descriptor.connectionInfo,
     healthCheck: descriptor.healthCheck,
+    dataExport: descriptor.dataExport,
+    dataImport: descriptor.dataImport,
   };
 }

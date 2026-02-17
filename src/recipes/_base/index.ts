@@ -23,6 +23,15 @@ export type {
   EnvVarSecretRef,
   VolumeMountDefinition,
   ProbeDefinition,
+  DataExportDefinition,
+  DataImportDefinition,
+  DataExportContext,
+  DataExportStrategy,
+  DataExportCommand,
+  DataExportFiles,
+  DataImportStrategy,
+  DataImportCommand,
+  DataImportFiles,
 } from "./types";
 
 // Builders

@@ -27,6 +27,8 @@ import type {
   ProbeDefinition,
   ResourceRequirements,
   VolumeMountDefinition,
+  DataExportDefinition,
+  DataImportDefinition,
 } from "../types";
 
 // ─── Web App Descriptor ───────────────────────────────────
@@ -102,6 +104,10 @@ export interface WebAppDescriptor<TConfig> {
 
   // Health check
   healthCheck: (ctx: HealthCheckContext<TConfig>) => HealthCheckSpec;
+
+  // Data export/import
+  dataExport?: DataExportDefinition;
+  dataImport?: DataImportDefinition;
 
   // AI
   aiHints: AiHints;
@@ -314,5 +320,7 @@ export function webApp<TConfig>(
 
     connectionInfo: descriptor.connectionInfo,
     healthCheck: descriptor.healthCheck,
+    dataExport: descriptor.dataExport,
+    dataImport: descriptor.dataImport,
   };
 }

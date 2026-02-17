@@ -118,6 +118,23 @@ Create a public status page to share uptime with your team or users.`,
     intervalSeconds: 15,
   }),
 
+  dataExport: {
+    description: "SQLite database containing all monitors, status pages, and notification settings",
+    strategy: {
+      type: "files",
+      paths: () => ["/app/data/kuma.db"],
+    },
+  },
+
+  dataImport: {
+    description: "Restore monitors and settings from a previous export",
+    strategy: {
+      type: "files",
+      extractPath: "/",
+    },
+    restartAfterImport: true,
+  },
+
   aiHints: {
     summary:
       "Uptime Kuma is a self-hosted uptime monitoring tool with a status page",

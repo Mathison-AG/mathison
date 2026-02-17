@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
 import { initiateRemoval } from "@/lib/deployer/engine";
 import { enrichDeploymentRecipe } from "@/lib/catalog/metadata";
+import { getDataPortabilityInfo } from "@/lib/deployer/data-export";
 import type { ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments/[id] ────────────────────────────
@@ -56,10 +57,14 @@ export async function GET(
       }
     }
 
+    // Get data portability info from the recipe
+    const dataPortability = getDataPortabilityInfo(deployment.recipe.slug);
+
     return NextResponse.json({
       ...enrichDeploymentRecipe(deployment),
       resources,
       ports,
+      dataPortability,
     });
   } catch (error) {
     console.error("[GET /api/deployments/[id]]", error);

@@ -269,6 +269,19 @@ n8n is a powerful visual workflow automation tool — think Zapier, but self-hos
     intervalSeconds: 15,
   }),
 
+  dataExport: {
+    description: "n8n stores data in its PostgreSQL dependency — export the database there instead",
+    strategy: {
+      type: "command",
+      command: () => [
+        "sh", "-c",
+        "echo 'n8n data lives in its PostgreSQL database. Export data from the n8n-db app instead.'",
+      ],
+      contentType: "text/plain",
+      fileExtension: "txt",
+    },
+  },
+
   aiHints: {
     summary:
       "n8n is a workflow automation platform, a self-hosted alternative to Zapier",

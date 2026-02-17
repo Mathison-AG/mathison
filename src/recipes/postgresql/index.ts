@@ -146,6 +146,37 @@ PostgreSQL supports standard SQL, JSON data, full-text search, and much more.`,
     intervalSeconds: 10,
   }),
 
+  dataExport: {
+    description: "Full database dump (all tables, data, and schema) as a SQL file",
+    strategy: {
+      type: "command",
+      command: (ctx) => [
+        "pg_dump",
+        "-U", String(ctx.config.username ?? "app"),
+        "-d", String(ctx.config.database ?? "app"),
+        "--no-password",
+        "--clean",
+        "--if-exists",
+      ],
+      contentType: "application/sql",
+      fileExtension: "sql",
+    },
+  },
+
+  dataImport: {
+    description: "Restore from a SQL dump file",
+    strategy: {
+      type: "command",
+      command: (ctx) => [
+        "psql",
+        "-U", String(ctx.config.username ?? "app"),
+        "-d", String(ctx.config.database ?? "app"),
+        "--no-password",
+      ],
+    },
+    restartAfterImport: false,
+  },
+
   aiHints: {
     summary:
       "PostgreSQL is a powerful open-source relational database management system",

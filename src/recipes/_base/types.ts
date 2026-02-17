@@ -153,6 +153,83 @@ export interface IngressDefinition {
   serviceNameSuffix: string;
 }
 
+// ─── Data Export/Import ───────────────────────────────────
+
+/**
+ * Command-based export: runs a command inside the pod and captures stdout.
+ * Example: pg_dump for PostgreSQL, redis-cli --rdb for Redis.
+ */
+export interface DataExportCommand {
+  type: "command";
+  /** Command to run inside the container (e.g. ["pg_dump", "-U", "app", "app"]) */
+  command: (ctx: DataExportContext) => string[];
+  /** MIME type of the output (e.g. "application/sql", "application/octet-stream") */
+  contentType: string;
+  /** File extension for the download (e.g. "sql", "rdb") */
+  fileExtension: string;
+}
+
+/**
+ * File-based export: tars specified paths from inside the container.
+ * Example: SQLite databases, MinIO data directory, config files.
+ * Contributors list which paths should be included in the export.
+ */
+export interface DataExportFiles {
+  type: "files";
+  /** Absolute paths inside the container to include in the tar archive */
+  paths: (ctx: DataExportContext) => string[];
+  /** Glob patterns to exclude (optional) */
+  excludePatterns?: string[];
+}
+
+export type DataExportStrategy = DataExportCommand | DataExportFiles;
+
+export interface DataExportContext {
+  /** Deployment config (Zod-validated) */
+  config: Record<string, unknown>;
+  /** Deployment secrets (passwords, keys) */
+  secrets: Record<string, string>;
+  /** Instance name */
+  name: string;
+  /** K8s namespace */
+  namespace: string;
+}
+
+export interface DataExportDefinition {
+  /** Human-readable description of what gets exported */
+  description: string;
+  /** How to export the data */
+  strategy: DataExportStrategy;
+}
+
+/**
+ * Import strategy: how to restore data from an export.
+ * For "command" exports, provide a command that accepts data on stdin.
+ * For "files" exports, the tar is extracted automatically.
+ */
+export interface DataImportCommand {
+  type: "command";
+  /** Command that accepts the exported data on stdin */
+  command: (ctx: DataExportContext) => string[];
+}
+
+export interface DataImportFiles {
+  type: "files";
+  /** Base directory to extract the tar into */
+  extractPath: string;
+}
+
+export type DataImportStrategy = DataImportCommand | DataImportFiles;
+
+export interface DataImportDefinition {
+  /** Human-readable description of what gets imported */
+  description: string;
+  /** How to import the data */
+  strategy: DataImportStrategy;
+  /** Whether the app should be restarted after import (default: true) */
+  restartAfterImport?: boolean;
+}
+
 // ─── Recipe Definition ────────────────────────────────────
 
 export interface RecipeDefinition<TConfig = unknown> {
@@ -189,6 +266,10 @@ export interface RecipeDefinition<TConfig = unknown> {
 
   // ── Health check definition
   healthCheck(ctx: HealthCheckContext<TConfig>): HealthCheckSpec;
+
+  // ── Data export/import — per-recipe data portability
+  dataExport?: DataExportDefinition;
+  dataImport?: DataImportDefinition;
 
   // ── AI metadata
   aiHints: AiHints;

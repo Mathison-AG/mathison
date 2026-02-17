@@ -148,6 +148,24 @@ MinIO is fully S3-compatible, so you can use it with:
     intervalSeconds: 15,
   }),
 
+  dataExport: {
+    description: "Full archive of all stored files and buckets",
+    strategy: {
+      type: "files",
+      paths: () => ["/data"],
+      excludePatterns: [".minio.sys/tmp/*"],
+    },
+  },
+
+  dataImport: {
+    description: "Restore files and buckets from a previous export",
+    strategy: {
+      type: "files",
+      extractPath: "/",
+    },
+    restartAfterImport: true,
+  },
+
   aiHints: {
     summary: "MinIO is a high-performance S3-compatible object storage system",
     whenToSuggest:
