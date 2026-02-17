@@ -40,7 +40,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │       ├── apps/            # One-click install endpoint
 │   │       ├── deployments/     # CRUD + logs (workspace-scoped)
 │   │       ├── onboarding/      # Mark onboarding complete
-│   │       ├── workspaces/      # Workspace CRUD + switch
+│   │       ├── workspaces/      # Workspace CRUD + switch + export/import
 │   │       └── stack/           # Canvas data (nodes + edges)
 │   │
 │   ├── components/
@@ -105,7 +105,7 @@ ai-k8s/                          # Workspace root = Next.js app
 ### AI Agent (`src/lib/agent/`)
 - **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
 - **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology. Workspace-aware.
-- **tools.ts** — 13 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `getAppHistory`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`, `requestApp`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
+- **tools.ts** — 15 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `getAppHistory`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`. Preview: `previewChanges`. Backup/Restore: `backupWorkspace`, `restoreWorkspace`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
 
 ### Deployment Engine V2 (`src/lib/deployer/`)
 - **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Uses recipe registry (not DB) for recipe lookup. Validates config via Zod, calls `build()` for K8s resources, queues SSA apply jobs. Records audit events. No more Helm.
@@ -171,5 +171,7 @@ ai-k8s/                          # Workspace root = Next.js app
 | `/api/deployments/[id]/access` | GET | Protected | Connection info (credentials, host, port) |
 | `/api/workspaces` | GET, POST | Protected | List / create workspaces |
 | `/api/workspaces/[id]` | GET, DELETE | Protected | Workspace detail / delete (+ all resources) |
+| `/api/workspaces/[id]/export` | GET | Protected | Export workspace to JSON snapshot (?download=true for file) |
+| `/api/workspaces/[id]/import` | POST | Protected | Import/restore from snapshot (?force=true to replace) |
 | `/api/workspaces/switch` | POST | Protected | Switch active workspace (sets cookie) |
 | `/api/stack` | GET | Protected | Canvas nodes + edges (active workspace) |

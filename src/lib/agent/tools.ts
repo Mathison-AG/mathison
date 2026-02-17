@@ -19,6 +19,9 @@ import {
   listWorkspaces,
   deleteWorkspace,
 } from "@/lib/workspace/manager";
+import { exportWorkspace } from "@/lib/workspace/export";
+import { validateSnapshot, importWorkspace } from "@/lib/workspace/import";
+import { getRecipeMetadataOrFallback as getRecipeMeta } from "@/lib/catalog/metadata";
 
 // ─── Time helpers ────────────────────────────────────────
 
@@ -853,6 +856,126 @@ export function getTools(tenantId: string, workspaceId: string) {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[uninstallApp]", { appId, tenantId }, err);
+          return { error: message };
+        }
+      },
+    }),
+
+    // ── Backup & Restore ──────────────────────────────────
+
+    backupWorkspace: tool({
+      description:
+        "Create a backup of the current workspace. Exports all installed apps and their settings to a portable snapshot. Secrets are not included (they'll be regenerated on restore). Use this when the user wants to save their setup, migrate, or create a restore point.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        try {
+          const snapshot = await exportWorkspace({
+            workspaceId,
+            tenantId,
+            exportedBy: "agent",
+          });
+
+          const serviceNames = snapshot.services.map((s) => {
+            const meta = getRecipeMeta(s.recipe);
+            return meta.displayName;
+          });
+
+          return {
+            status: "success",
+            serviceCount: snapshot.services.length,
+            services: serviceNames,
+            message:
+              snapshot.services.length === 0
+                ? "Backup created, but there are no apps installed in this workspace."
+                : `Backup created with ${snapshot.services.length} app${snapshot.services.length > 1 ? "s" : ""}: ${serviceNames.join(", ")}. The backup can be used to restore this setup later.`,
+            snapshot,
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[backupWorkspace]", { workspaceId, tenantId }, err);
+          return { error: message };
+        }
+      },
+    }),
+
+    restoreWorkspace: tool({
+      description:
+        "Restore apps from a backup snapshot. Recreates all services with fresh secrets and deploys them in the correct order. Use when the user wants to restore from a previous backup or set up a workspace from a snapshot. The user will see a confirmation dialog first.",
+      inputSchema: z.object({
+        snapshot: z
+          .record(z.string(), z.unknown())
+          .describe("The backup snapshot to restore from (the full JSON object from a previous backup)"),
+        force: z
+          .boolean()
+          .optional()
+          .describe("If true, replaces existing apps with the same names. Default: false."),
+      }),
+      needsApproval: true,
+      execute: async ({ snapshot: snapshotData, force }) => {
+        try {
+          // Validate the snapshot
+          const existingDeployments = await prisma.deployment.findMany({
+            where: {
+              workspaceId,
+              status: { not: "STOPPED" },
+            },
+            select: { name: true },
+          });
+          const existingNames = new Set(existingDeployments.map((d) => d.name));
+
+          const validation = validateSnapshot(snapshotData, {
+            existingNames,
+            force: force ?? false,
+          });
+
+          if (!validation.valid) {
+            const errorMessages = validation.errors
+              .map((e) => `${e.service}: ${e.error}`)
+              .join("; ");
+            return {
+              error: `Backup validation failed: ${errorMessages}`,
+            };
+          }
+
+          // Import
+          const result = await importWorkspace({
+            workspaceId,
+            tenantId,
+            snapshot: validation.snapshot!,
+            force: force ?? false,
+          });
+
+          const queuedNames = result.services
+            .filter((s) => s.status === "queued")
+            .map((s) => {
+              const meta = getRecipeMeta(s.recipe);
+              return meta.displayName;
+            });
+
+          let message: string;
+          if (result.totalQueued === 0 && result.totalSkipped > 0) {
+            message = "All apps from the backup already exist in this workspace. Nothing to restore.";
+          } else if (result.totalErrors > 0) {
+            message = `Restored ${result.totalQueued} app${result.totalQueued !== 1 ? "s" : ""}, but ${result.totalErrors} failed. Check the details below.`;
+          } else {
+            message = `Restoring ${result.totalQueued} app${result.totalQueued !== 1 ? "s" : ""}: ${queuedNames.join(", ")}. They'll be set up in the right order — dependencies first. This usually takes a couple of minutes.`;
+          }
+
+          return {
+            status: "restoring",
+            message,
+            totalQueued: result.totalQueued,
+            totalSkipped: result.totalSkipped,
+            totalErrors: result.totalErrors,
+            services: result.services.map((s) => ({
+              name: s.name,
+              status: s.status,
+              message: s.message,
+            })),
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[restoreWorkspace]", { workspaceId, tenantId }, err);
           return { error: message };
         }
       },
