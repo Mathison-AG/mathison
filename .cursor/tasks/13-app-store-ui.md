@@ -7,7 +7,7 @@ Redesign the catalog into a consumer-friendly App Store that becomes the primary
 ## Prerequisites
 
 - Step 12 completed (enriched recipe data model with consumer fields)
-- Seed data has shortDescription, useCases, gettingStarted, sizeTiers
+- Seed data has shortDescription, useCases, gettingStarted
 
 ## What to Build
 
@@ -105,15 +105,6 @@ Complete redesign of the recipe detail page:
 │                                                          │
 │  ─────────────────────────────────────────────────────   │
 │                                                          │
-│  Choose a size                                           │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐                    │
-│  │  Small  │ │ Medium  │ │  Large  │                    │
-│  │Personal │ │  Team   │ │  Pro    │                    │
-│  │  Free   │ │  Free   │ │  Free   │                    │
-│  └─────────┘ └─────────┘ └─────────┘                    │
-│                                                          │
-│  ─────────────────────────────────────────────────────   │
-│                                                          │
 │  Screenshots                                             │
 │  [img1] [img2] [img3]                                    │
 │                                                          │
@@ -129,7 +120,6 @@ Key sections:
 - **Header**: icon, name, category, featured badge, install button
 - **Description**: full `description` text
 - **Use cases**: rendered from `useCases[]` array as a checklist
-- **Size picker**: cards for small/medium/large from `sizeTiers` — user picks before installing
 - **Screenshots**: gallery from `screenshots[]` (placeholder if empty)
 - **Links**: website and documentation URLs
 - **No config schema visible** — technical config is hidden from consumers
@@ -151,7 +141,6 @@ src/components/
 │   ├── featured-apps.tsx     # Featured row component
 │   ├── category-row.tsx      # Horizontal category section
 │   ├── app-detail.tsx        # Full detail view
-│   ├── size-picker.tsx       # Small/Medium/Large selector
 │   └── store-search.tsx      # Search bar component
 ├── catalog/                  # Keep for backward compat, can deprecate later
 ```
@@ -175,7 +164,7 @@ Keep backend code terminology unchanged — only user-facing JSX strings change.
 - [ ] Category-based browsing works with horizontal rows
 - [ ] Search filters apps by name and description
 - [ ] App cards show icon, name, short description, install count
-- [ ] App detail page shows use cases, size picker, description, links
+- [ ] App detail page shows use cases, description, links
 - [ ] Sidebar says "Apps" or "App Store" instead of "Catalog"
 - [ ] No technical jargon visible anywhere in the UI (no "deploy", "service", "recipe", "Helm")
 - [ ] Responsive layout — works on desktop and mobile
@@ -208,5 +197,4 @@ src/
 - The canvas (React Flow) isn't deleted — just moved off the homepage. Power users can still access it. Consider putting it under `/apps/map` or behind a toggle.
 - Install count is real data from the DB. Start all at 0 — it'll grow organically.
 - For screenshots, use placeholder gradient images or leave the section hidden when `screenshots` is empty. Real screenshots can be added to seed data later.
-- The size picker is visual only in this step — it stores the selected size but the actual install flow is Step 14.
 - Keep the AI chat panel accessible (floating button). The chat is complementary to the visual App Store, not replaced by it.

@@ -2,13 +2,12 @@
 
 ## Goal
 
-Grow the app catalog from 5 to 20+ apps, covering the most popular open-source self-hosted tools that consumers actually want. Each app has full consumer-facing metadata: descriptions, use cases, getting started guides, size tiers, and tested values templates. After this step, the App Store feels rich and useful — not a demo with 5 items.
+Grow the app catalog from 5 to 20+ apps, covering the most popular open-source self-hosted tools that consumers actually want. Each app has full consumer-facing metadata: descriptions, use cases, getting started guides, and tested values templates. After this step, the App Store feels rich and useful — not a demo with 5 items.
 
 ## Prerequisites
 
 - Steps 12–18 completed (full consumer experience working)
 - Deployment engine tested with existing 5 apps
-- Size tier abstraction working
 
 ## What to Build
 
@@ -16,7 +15,7 @@ Grow the app catalog from 5 to 20+ apps, covering the most popular open-source s
 
 Add these recipes to `src/lib/catalog/seed-data.ts`. Each needs:
 - Full Helm chart configuration (chartUrl, valuesTemplate, dependencies, secretsSchema)
-- Consumer metadata (shortDescription, useCases, gettingStarted, sizeTiers)
+- Consumer metadata (shortDescription, useCases, gettingStarted)
 - Tested default values that work out of the box on a kind cluster
 
 **Automation & Workflows:**
@@ -88,7 +87,6 @@ Each new recipe must pass:
 - [ ] Dependencies auto-deploy correctly
 - [ ] Default secrets are generated properly
 - [ ] Port-forward works (for web UI apps: page loads, for DBs: connection works)
-- [ ] Size tiers (small/medium/large) produce working configurations
 - [ ] `gettingStarted` instructions are accurate and tested
 - [ ] `useCases` array has at least 3 entries
 - [ ] `shortDescription` is one clear sentence
@@ -143,7 +141,7 @@ Document and standardize Helm values template patterns:
 - [ ] 15+ new app recipes added (total catalog: 20+ apps)
 - [ ] MySQL and MongoDB added as dependency recipes
 - [ ] All new apps deploy successfully on kind cluster
-- [ ] All new apps have consumer metadata (shortDescription, useCases, gettingStarted, sizeTiers)
+- [ ] All new apps have consumer metadata (shortDescription, useCases, gettingStarted)
 - [ ] Icons exist for all apps
 - [ ] Categories are updated and populated
 - [ ] Seed script runs idempotently

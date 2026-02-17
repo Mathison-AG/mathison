@@ -70,9 +70,9 @@ Target audience shift: from infrastructure engineers to **non-technical consumer
 
 | Step | Name | Status | Summary |
 |------|------|--------|---------|
-| 12 | App Data Model | pending | Enrich Recipe with consumer fields: shortDescription, useCases, gettingStarted, sizeTiers, screenshots, installCount |
+| 12 | App Data Model | pending | Enrich Recipe with consumer fields: shortDescription, useCases, gettingStarted, screenshots, installCount, featured |
 | 13 | App Store UI | pending | Redesign catalog into visual App Store as the homepage. Featured apps, categories, rich cards. |
-| 14 | One-Click Install | pending | Install button on app cards — no chat required. Size picker, progress indicator, success screen. |
+| 14 | One-Click Install | pending | Install button on app cards — no chat required. Confirmation dialog, progress indicator, success screen. |
 | 15 | My Apps Dashboard | pending | Replace canvas/deployments with consumer-friendly "My Apps" grid. Status indicators, open buttons, settings. |
 | 16 | Consumer Agent | pending | Rewrite system prompt + tools for non-technical users. Recommend by problem, diagnose in plain English. |
 | 17 | Onboarding | pending | Streamlined signup, welcome flow with category picker, first-install celebration. |

@@ -87,7 +87,6 @@ Consumer-friendly detail page for an installed app:
 │                                                          │
 │  ─────────────────────────────────────────────────────   │
 │                                                          │
-│  Size: Medium (Small team)                               │
 │  Installed: 2 days ago                                   │
 │  Last updated: 1 hour ago                                │
 │                                                          │
@@ -100,11 +99,6 @@ Consumer-friendly detail page for an installed app:
 │                                                          │
 │  ─────────────────────────────────────────────────────   │
 │                                                          │
-│  Settings                                                │
-│  Size: [Small] [Medium ✓] [Large]   [Apply]             │
-│                                                          │
-│  ─────────────────────────────────────────────────────   │
-│                                                          │
 │  Danger Zone                                             │
 │  [Remove App]  This will delete the app and all its data │
 │                                                          │
@@ -113,9 +107,8 @@ Consumer-friendly detail page for an installed app:
 
 Sections:
 - **Header**: icon, name, category, status, open button
-- **Info**: size tier label, install date, last update (relative time)
+- **Info**: install date, last update (relative time)
 - **Getting started**: rendered from `recipe.gettingStarted` (Markdown)
-- **Settings**: size tier changer (triggers upgrade), any user-facing config
 - **Danger zone**: remove button with confirmation dialog
 
 ### 4. Remove Confirmation Dialog
@@ -188,7 +181,6 @@ When returning to My Apps from an install flow:
 - [ ] App cards have "Open" button that opens the app in a new tab
 - [ ] Actions menu works (settings, restart, remove)
 - [ ] App detail page shows consumer-friendly info (no technical data)
-- [ ] Size changing works (triggers upgrade via deployment engine)
 - [ ] Remove flow works with confirmation dialog
 - [ ] Getting started guide rendered on detail page
 - [ ] Empty state guides users to App Store
@@ -223,6 +215,6 @@ src/
 
 - This page reuses the existing `/api/deployments` endpoints — no new API routes needed for the list and detail views.
 - The "Restart" action is an upgrade with the same config. Call `initiateUpgrade()` with the current config.
-- The detail page should fetch the recipe data alongside the deployment to get `gettingStarted` and `sizeTiers`.
+- The detail page should fetch the recipe data alongside the deployment to get `gettingStarted`.
 - Don't show internal services (auto-deployed dependencies like PostgreSQL for n8n) unless the user explicitly installed them. Filter by checking if the deployment was user-initiated vs. auto-deployed as a dependency. You may need to add a `isDependency` boolean to the Deployment model, or check `dependsOn`.
 - The old canvas component isn't deleted — it's just not the default view anymore. It can be linked from a "Power tools" section or kept at a dedicated route for users who want it.

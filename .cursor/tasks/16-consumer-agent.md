@@ -48,8 +48,6 @@ ABSOLUTE RULES:
   like cpu_request or memory_limit
 - NEVER say "deploy" — say "install" or "set up"
 - NEVER say "service" in infrastructure context — say "app"
-- Translate sizes: "small" = "for personal use", "medium" = "for a small team",
-  "large" = "when you need high performance"
 - If something fails: explain what the USER can do, not what went wrong technically
   ✓ "It looks like your automation tool needs a moment to start up. Give it about 30 seconds and try again."
   ✗ "The n8n pod is in CrashLoopBackOff due to a PostgreSQL connection timeout."
@@ -74,12 +72,12 @@ Rename tools for consumer context. The underlying implementations don't change �
 | Old Tool | New Tool | Description Change |
 |----------|----------|--------------------|
 | `searchCatalog` | `findApps` | "Search for apps that match what the user is looking for. Search by problem description, not just app name." |
-| `getRecipe` | `getAppInfo` | "Get details about a specific app — what it does, what it's good for, available sizes." |
-| `deployService` | `installApp` | "Install an app for the user. Pick sensible defaults. Use 'small' size unless the user asks for more." |
+| `getRecipe` | `getAppInfo` | "Get details about a specific app — what it does and what it's good for." |
+| `deployService` | `installApp` | "Install an app for the user. Uses sensible defaults automatically." |
 | `getStackStatus` | `listMyApps` | "See all the user's installed apps and whether they're running." |
 | `getServiceDetail` | `getAppStatus` | "Check the detailed status of a specific installed app." |
 | `getServiceLogs` | `diagnoseApp` | "Look at an app's internal logs to figure out what's wrong. Read the logs yourself and explain the issue in plain language — never show raw logs to the user." |
-| `updateService` | `changeAppSettings` | "Change settings for an installed app. Map user requests to config changes: 'make it faster' → increase size tier, 'more storage' → increase storage." |
+| `updateService` | `changeAppSettings` | "Change settings for an installed app. Map user requests to config changes." |
 | `removeService` | `uninstallApp` | "Remove an installed app. Always confirm what this means (data will be lost)." |
 | `createRecipe` | `requestApp` | "Request a new app to be added to the store. Use when the user wants something we don't have." |
 | `searchHelmCharts` | REMOVED | Not consumer-facing. If an app isn't in the catalog, use `requestApp` instead. |
@@ -122,7 +120,6 @@ Agent tool results should be formatted for the agent to translate, not for raw d
   "status": "running",
   "statusLabel": "Running and healthy",
   "url": "http://n8n.mathison-dev.svc.cluster.local",
-  "size": "medium",
   "installedAt": "2 days ago",
   "healthy": true
 }
@@ -140,7 +137,7 @@ The `diagnoseApp` tool (formerly `getServiceLogs`) should:
    {
      "appName": "n8n",
      "diagnosis": "The app restarted 3 times in the last hour. The logs suggest it's running out of memory. Recommending an upgrade to Medium size.",
-     "suggestion": "changeAppSettings with larger size tier"
+     "suggestion": "changeAppSettings to increase resources"
    }
    ```
 4. The agent then communicates this to the user in friendly language.
