@@ -64,6 +64,24 @@ Architectural decisions that affect all future work. Reference by ID when releva
 | D56 | Worker bootstrap pattern (index.ts → dynamic import main.ts) | Static imports hoist above dotenv.config() |
 | D57 | Bitnami chart versions = NULL (use latest) | Pinned versions reference removed Docker Hub tags |
 
+## Consumer Pivot — Steps 12–20
+
+Target audience shift: from infrastructure engineers to **non-technical consumers** who want to run open-source apps without any technical knowledge. Plan created 2026-02-15.
+
+| Step | Name | Status | Summary |
+|------|------|--------|---------|
+| 12 | App Data Model | pending | Enrich Recipe with consumer fields: shortDescription, useCases, gettingStarted, sizeTiers, screenshots, installCount |
+| 13 | App Store UI | pending | Redesign catalog into visual App Store as the homepage. Featured apps, categories, rich cards. |
+| 14 | One-Click Install | pending | Install button on app cards — no chat required. Size picker, progress indicator, success screen. |
+| 15 | My Apps Dashboard | pending | Replace canvas/deployments with consumer-friendly "My Apps" grid. Status indicators, open buttons, settings. |
+| 16 | Consumer Agent | pending | Rewrite system prompt + tools for non-technical users. Recommend by problem, diagnose in plain English. |
+| 17 | Onboarding | pending | Streamlined signup, welcome flow with category picker, first-install celebration. |
+| 18 | App Access & URLs | pending | Auto port-forward for kind, clean URLs, "Open App" button, connection info for databases. |
+| 19 | Expanded Catalog | pending | Grow from 5 to 20+ apps. Activepieces, Plane, Outline, Gitea, Nextcloud, Immich, Metabase, Grafana, Vaultwarden, etc. |
+| 20 | Consumer Polish | pending | Visual consistency, loading states, error handling, mobile responsiveness, accessibility, language audit. |
+
+Task files: `.cursor/tasks/12-*.md` through `.cursor/tasks/20-*.md`
+
 ## Feature Log
 
 Track new features built after MVP. Add entries as you go.
