@@ -70,7 +70,7 @@ Target audience shift: from infrastructure engineers to **non-technical consumer
 
 | Step | Name | Status | Summary |
 |------|------|--------|---------|
-| 12 | App Data Model | pending | Enrich Recipe with consumer fields: shortDescription, useCases, gettingStarted, screenshots, installCount, featured |
+| 12 | App Data Model | **done** | Enriched Recipe with consumer fields: shortDescription, useCases, gettingStarted, screenshots, websiteUrl, documentationUrl, installCount, featured. All 5 seed recipes enriched. Install count incremented on deploy. |
 | 13 | App Store UI | pending | Redesign catalog into visual App Store as the homepage. Featured apps, categories, rich cards. |
 | 14 | One-Click Install | pending | Install button on app cards — no chat required. Confirmation dialog, progress indicator, success screen. |
 | 15 | My Apps Dashboard | pending | Replace canvas/deployments with consumer-friendly "My Apps" grid. Status indicators, open buttons, settings. |
@@ -89,3 +89,4 @@ Track new features built after MVP. Add entries as you go.
 | Date | Feature | Files Changed | Notes |
 |------|---------|---------------|-------|
 | 2026-02-13 | Multi-workspace support | ~20 files | New Workspace model, workspace CRUD API, sidebar selector, settings management, deployment engine workspace-scoped, AI agent workspace tools. Namespace format: `{tenantSlug}-{workspaceSlug}`. Active workspace via cookie + DB. Migration auto-created default workspaces for existing tenants. |
+| 2026-02-17 | Step 12: App Data Model | 7 files | Added 8 consumer-facing fields to Recipe (shortDescription, useCases, gettingStarted, screenshots, websiteUrl, documentationUrl, installCount, featured). Enriched all 5 seed recipes with taglines, use cases, getting-started guides, and website URLs. Added `incrementInstallCount()` in catalog service, called from deployment engine. Migration, types, service, seed script all updated. |

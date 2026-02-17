@@ -36,6 +36,14 @@ function toRecipe(row: Record<string, unknown>): Recipe {
     resourceLimits: row.resourceLimits as Recipe["resourceLimits"],
     healthCheck: row.healthCheck as Recipe["healthCheck"],
     aiHints: row.aiHints as Recipe["aiHints"],
+    shortDescription: (row.shortDescription as string) ?? null,
+    useCases: (row.useCases as string[]) ?? [],
+    gettingStarted: (row.gettingStarted as string) ?? null,
+    screenshots: (row.screenshots as string[]) ?? [],
+    websiteUrl: (row.websiteUrl as string) ?? null,
+    documentationUrl: (row.documentationUrl as string) ?? null,
+    installCount: (row.installCount as number) ?? 0,
+    featured: (row.featured as boolean) ?? false,
     tier: row.tier as Recipe["tier"],
     status: row.status as Recipe["status"],
     version: row.version as number,
@@ -113,6 +121,13 @@ export async function createRecipe(data: RecipeCreateInput): Promise<Recipe> {
       healthCheck:
         (data.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
       aiHints: (data.aiHints as unknown as Prisma.InputJsonValue) ?? {},
+      shortDescription: data.shortDescription,
+      useCases: data.useCases ?? [],
+      gettingStarted: data.gettingStarted,
+      screenshots: data.screenshots ?? [],
+      websiteUrl: data.websiteUrl,
+      documentationUrl: data.documentationUrl,
+      featured: data.featured ?? false,
       status: "DRAFT",
       tier: "COMMUNITY",
     },
@@ -259,8 +274,11 @@ export async function searchRecipes(
       slug,
       display_name AS "displayName",
       description,
+      short_description AS "shortDescription",
       category,
       tier,
+      install_count AS "installCount",
+      featured,
       1 - (embedding <=> ${vectorStr}::vector) AS similarity
     FROM recipes
     WHERE status = 'PUBLISHED'
@@ -271,4 +289,18 @@ export async function searchRecipes(
   `;
 
   return results;
+}
+
+// ─── Install Count ──────────────────────────────────────
+
+/** Increment the install count for a recipe. Fire-and-forget — never throws. */
+export async function incrementInstallCount(recipeId: string): Promise<void> {
+  try {
+    await prisma.recipe.update({
+      where: { id: recipeId },
+      data: { installCount: { increment: 1 } },
+    });
+  } catch (err) {
+    console.error("[incrementInstallCount] Failed:", err);
+  }
 }

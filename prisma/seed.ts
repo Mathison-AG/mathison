@@ -31,67 +31,47 @@ async function main() {
     console.log(`  📦 Upserting: ${recipe.displayName} (${recipe.slug})`);
 
     // Upsert the recipe (idempotent)
+    const recipeData = {
+      displayName: recipe.displayName,
+      description: recipe.description,
+      category: recipe.category,
+      tags: recipe.tags ?? [],
+      iconUrl: recipe.iconUrl ?? null,
+      sourceType: recipe.sourceType ?? "helm",
+      chartUrl: recipe.chartUrl,
+      chartVersion: recipe.chartVersion ?? null,
+      configSchema:
+        (recipe.configSchema as unknown as Prisma.InputJsonValue) ?? {},
+      secretsSchema:
+        (recipe.secretsSchema as unknown as Prisma.InputJsonValue) ?? {},
+      valuesTemplate: recipe.valuesTemplate ?? "",
+      dependencies:
+        (recipe.dependencies as unknown as Prisma.InputJsonValue) ?? [],
+      ingressConfig:
+        (recipe.ingressConfig as unknown as Prisma.InputJsonValue) ?? {},
+      resourceDefaults:
+        (recipe.resourceDefaults as unknown as Prisma.InputJsonValue) ?? {},
+      resourceLimits:
+        (recipe.resourceLimits as unknown as Prisma.InputJsonValue) ?? {},
+      healthCheck:
+        (recipe.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
+      aiHints:
+        (recipe.aiHints as unknown as Prisma.InputJsonValue) ?? {},
+      shortDescription: recipe.shortDescription ?? null,
+      useCases: recipe.useCases ?? [],
+      gettingStarted: recipe.gettingStarted ?? null,
+      screenshots: recipe.screenshots ?? [],
+      websiteUrl: recipe.websiteUrl ?? null,
+      documentationUrl: recipe.documentationUrl ?? null,
+      featured: recipe.featured ?? false,
+      tier: "OFFICIAL" as const,
+      status: "PUBLISHED" as const,
+    };
+
     const row = await prisma.recipe.upsert({
       where: { slug: recipe.slug },
-      create: {
-        slug: recipe.slug,
-        displayName: recipe.displayName,
-        description: recipe.description,
-        category: recipe.category,
-        tags: recipe.tags ?? [],
-        iconUrl: recipe.iconUrl ?? null,
-        sourceType: recipe.sourceType ?? "helm",
-        chartUrl: recipe.chartUrl,
-        chartVersion: recipe.chartVersion ?? null,
-        configSchema:
-          (recipe.configSchema as unknown as Prisma.InputJsonValue) ?? {},
-        secretsSchema:
-          (recipe.secretsSchema as unknown as Prisma.InputJsonValue) ?? {},
-        valuesTemplate: recipe.valuesTemplate ?? "",
-        dependencies:
-          (recipe.dependencies as unknown as Prisma.InputJsonValue) ?? [],
-        ingressConfig:
-          (recipe.ingressConfig as unknown as Prisma.InputJsonValue) ?? {},
-        resourceDefaults:
-          (recipe.resourceDefaults as unknown as Prisma.InputJsonValue) ?? {},
-        resourceLimits:
-          (recipe.resourceLimits as unknown as Prisma.InputJsonValue) ?? {},
-        healthCheck:
-          (recipe.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
-        aiHints:
-          (recipe.aiHints as unknown as Prisma.InputJsonValue) ?? {},
-        tier: "OFFICIAL",
-        status: "PUBLISHED",
-      },
-      update: {
-        displayName: recipe.displayName,
-        description: recipe.description,
-        category: recipe.category,
-        tags: recipe.tags ?? [],
-        iconUrl: recipe.iconUrl ?? null,
-        sourceType: recipe.sourceType ?? "helm",
-        chartUrl: recipe.chartUrl,
-        chartVersion: recipe.chartVersion ?? null,
-        configSchema:
-          (recipe.configSchema as unknown as Prisma.InputJsonValue) ?? {},
-        secretsSchema:
-          (recipe.secretsSchema as unknown as Prisma.InputJsonValue) ?? {},
-        valuesTemplate: recipe.valuesTemplate ?? "",
-        dependencies:
-          (recipe.dependencies as unknown as Prisma.InputJsonValue) ?? [],
-        ingressConfig:
-          (recipe.ingressConfig as unknown as Prisma.InputJsonValue) ?? {},
-        resourceDefaults:
-          (recipe.resourceDefaults as unknown as Prisma.InputJsonValue) ?? {},
-        resourceLimits:
-          (recipe.resourceLimits as unknown as Prisma.InputJsonValue) ?? {},
-        healthCheck:
-          (recipe.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
-        aiHints:
-          (recipe.aiHints as unknown as Prisma.InputJsonValue) ?? {},
-        tier: "OFFICIAL",
-        status: "PUBLISHED",
-      },
+      create: { slug: recipe.slug, ...recipeData },
+      update: recipeData,
     });
 
     // Generate embedding if OpenAI key is available

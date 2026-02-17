@@ -107,6 +107,16 @@ model Recipe {
   resourceLimits   Json            @default("{}") @map("resource_limits")
   healthCheck      Json            @default("{}") @map("health_check")
 
+  // Consumer-facing
+  shortDescription  String?         @map("short_description")
+  useCases          String[]        @default([]) @map("use_cases")
+  gettingStarted    String?         @map("getting_started")
+  screenshots       String[]        @default([])
+  websiteUrl        String?         @map("website_url")
+  documentationUrl  String?         @map("documentation_url")
+  installCount      Int             @default(0) @map("install_count")
+  featured          Boolean         @default(false)
+
   // AI
   aiHints          Json            @default("{}") @map("ai_hints")
   embedding        Unsupported("vector(1536)")?

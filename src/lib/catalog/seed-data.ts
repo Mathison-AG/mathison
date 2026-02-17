@@ -19,6 +19,29 @@ const postgresql: RecipeCreateInput = {
   displayName: "PostgreSQL",
   description:
     "Enterprise-grade relational database with ACID compliance, JSON support, and extensibility. Ideal for structured data, complex queries, and as a backend for applications like n8n or custom apps.",
+  shortDescription: "Powerful open-source relational database",
+  useCases: [
+    "Store application data",
+    "Run SQL queries",
+    "Backend for other apps",
+  ],
+  gettingStarted: `## Getting Started with PostgreSQL
+
+After installation, you can connect to your database using any PostgreSQL client.
+
+**Connection details** are available in your app's settings panel. You'll need:
+- **Host** and **Port** (provided automatically)
+- **Database name** (default: \`app\`)
+- **Username** and **Password** (auto-generated)
+
+### Quick start
+1. Copy the connection string from your app settings
+2. Use any SQL client (e.g. pgAdmin, DBeaver, TablePlus) to connect
+3. Start creating tables and inserting data
+
+PostgreSQL supports standard SQL, JSON data, full-text search, and much more.`,
+  websiteUrl: "https://www.postgresql.org",
+  documentationUrl: "https://www.postgresql.org/docs/",
   category: "database",
   tags: ["database", "sql", "relational", "postgres", "rdbms"],
   iconUrl: undefined,
@@ -138,6 +161,25 @@ const redis: RecipeCreateInput = {
   displayName: "Redis",
   description:
     "In-memory data store used as cache, message broker, and session store. Sub-millisecond latency for high-performance workloads. Supports key-value, pub/sub, streams, and sorted sets.",
+  shortDescription: "Lightning-fast in-memory data store",
+  useCases: ["Caching", "Session storage", "Message queuing"],
+  gettingStarted: `## Getting Started with Redis
+
+Redis is ready to use as soon as it's installed. It stores data in memory for ultra-fast access.
+
+**Connection details** are available in your app's settings panel.
+
+### Common uses
+- **Caching**: Speed up your other apps by caching frequently accessed data
+- **Session storage**: Store user sessions for your web applications
+- **Message queuing**: Use pub/sub or streams for real-time messaging
+
+### Quick start
+1. Copy the connection details from your app settings
+2. Connect using any Redis client or library
+3. Start storing and retrieving data with simple key-value commands`,
+  websiteUrl: "https://redis.io",
+  documentationUrl: "https://redis.io/docs/",
   category: "database",
   tags: ["cache", "redis", "in-memory", "message-broker", "session-store"],
   iconUrl: undefined,
@@ -253,6 +295,30 @@ const n8n: RecipeCreateInput = {
   displayName: "n8n",
   description:
     "Fair-code workflow automation platform. Connect APIs, databases, and services with a visual flow editor. Self-hosted alternative to Zapier and Make with full control over your data.",
+  shortDescription:
+    "Visual workflow automation — connect anything to everything",
+  useCases: [
+    "Automate repetitive tasks",
+    "Connect apps without coding",
+    "Build custom workflows",
+  ],
+  gettingStarted: `## Getting Started with n8n
+
+n8n is a powerful visual workflow automation tool — think Zapier, but self-hosted and fully under your control.
+
+### First steps
+1. Open n8n from your dashboard (click "Open App")
+2. Create your first workflow by clicking **+ New Workflow**
+3. Pick a **trigger** — this is what starts your workflow (e.g., a schedule, a webhook, or a new email)
+4. Add **actions** — connect to 400+ apps like Slack, Google Sheets, GitHub, and more
+5. Test your workflow, then activate it
+
+### Ideas to get started
+- Send a Slack message when a GitHub issue is created
+- Back up a Google Sheet to your database every night
+- Monitor a website and get notified if it goes down`,
+  websiteUrl: "https://n8n.io",
+  documentationUrl: "https://docs.n8n.io",
   category: "automation",
   tags: [
     "automation",
@@ -260,7 +326,7 @@ const n8n: RecipeCreateInput = {
     "zapier",
     "integration",
     "no-code",
-    "low-code"
+    "low-code",
   ],
   iconUrl: undefined,
   sourceType: "helm",
@@ -398,6 +464,32 @@ const uptimeKuma: RecipeCreateInput = {
   displayName: "Uptime Kuma",
   description:
     "Self-hosted monitoring tool with a beautiful status page. Monitor HTTP, TCP, DNS, Docker, and more. Get alerts via email, Slack, Telegram, and 90+ notification services.",
+  shortDescription: "Beautiful uptime monitoring for all your services",
+  useCases: [
+    "Monitor website uptime",
+    "Get alerts when services go down",
+    "Track response times",
+  ],
+  gettingStarted: `## Getting Started with Uptime Kuma
+
+Uptime Kuma lets you monitor your websites, APIs, and services — and get notified instantly when something goes down.
+
+### First steps
+1. Open Uptime Kuma from your dashboard (click "Open App")
+2. Create an account on first launch (this is your local admin account)
+3. Click **Add New Monitor**
+4. Enter the URL or IP address you want to monitor
+5. Set your check interval (how often to check) and alert thresholds
+
+### Set up notifications
+Go to **Settings → Notifications** to connect:
+- Email, Slack, Discord, Telegram
+- Microsoft Teams, Webhooks, and 90+ more services
+
+### Status pages
+Create a public status page to share uptime with your team or users.`,
+  websiteUrl: "https://uptime.kuma.pet",
+  documentationUrl: "https://github.com/louislam/uptime-kuma/wiki",
   category: "monitoring",
   tags: ["monitoring", "uptime", "status-page", "alerts", "health-check"],
   iconUrl: undefined,
@@ -505,6 +597,29 @@ const minio: RecipeCreateInput = {
   displayName: "MinIO",
   description:
     "High-performance S3-compatible object storage. Store files, backups, artifacts, and media with full S3 API compatibility. Supports versioning, lifecycle policies, and server-side encryption.",
+  shortDescription: "Store files and media — your own cloud storage",
+  useCases: ["File storage", "Backup destination", "Media hosting"],
+  gettingStarted: `## Getting Started with MinIO
+
+MinIO gives you your own private cloud storage, compatible with Amazon S3. Store files, backups, images, and more.
+
+### First steps
+1. Open the MinIO Console from your dashboard (click "Open App")
+2. Log in with the admin credentials from your app settings
+3. Click **Create Bucket** to create your first storage bucket
+4. Upload files via the web console, or connect using any S3-compatible tool
+
+### Connecting from other apps
+MinIO is fully S3-compatible, so you can use it with:
+- Any app that supports S3 storage (backups, media uploads)
+- AWS CLI: \`aws --endpoint-url <your-minio-url> s3 ls\`
+- Popular S3 libraries in Python, Node.js, Go, and more
+
+### Tips
+- Create separate buckets for different purposes (e.g., "backups", "uploads", "media")
+- Enable versioning on important buckets to keep file history`,
+  websiteUrl: "https://min.io",
+  documentationUrl: "https://min.io/docs/minio/linux/index.html",
   category: "storage",
   tags: ["storage", "s3", "object-storage", "minio", "backup", "files"],
   iconUrl: undefined,

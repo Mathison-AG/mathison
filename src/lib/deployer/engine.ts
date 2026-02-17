@@ -10,7 +10,7 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { getRecipe } from "@/lib/catalog/service";
+import { getRecipe, incrementInstallCount } from "@/lib/catalog/service";
 import { generateSecrets, createK8sSecret, readK8sSecret } from "./secrets";
 import {
   renderValuesTemplate,
@@ -162,6 +162,9 @@ export async function initiateDeployment(params: {
   await deploymentQueue.add(JOB_NAMES.DEPLOY, jobData, {
     jobId: `deploy-${deployment.id}`,
   });
+
+  // Increment install count (fire-and-forget)
+  incrementInstallCount(recipe.id);
 
   const depMsg =
     newDeploymentIds.length > 0

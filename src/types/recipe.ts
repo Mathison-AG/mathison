@@ -112,6 +112,16 @@ export interface Recipe {
   resourceLimits: ResourceSpec;
   healthCheck: HealthCheck;
   aiHints: AiHints;
+  // Consumer-facing
+  shortDescription: string | null;
+  useCases: string[];
+  gettingStarted: string | null;
+  screenshots: string[];
+  websiteUrl: string | null;
+  documentationUrl: string | null;
+  installCount: number;
+  featured: boolean;
+  // Metadata
   tier: RecipeTier;
   status: RecipeStatus;
   version: number;
@@ -146,6 +156,14 @@ export interface RecipeCreateInput {
   resourceLimits?: ResourceSpec;
   healthCheck?: HealthCheck;
   aiHints?: AiHints;
+  // Consumer-facing
+  shortDescription?: string;
+  useCases?: string[];
+  gettingStarted?: string;
+  screenshots?: string[];
+  websiteUrl?: string;
+  documentationUrl?: string;
+  featured?: boolean;
 }
 
 export interface RecipeUpdateInput {
@@ -175,7 +193,10 @@ export interface RecipeSearchResult {
   slug: string;
   displayName: string;
   description: string;
+  shortDescription: string | null;
   category: string;
   tier: RecipeTier;
+  installCount: number;
+  featured: boolean;
   similarity: number;
 }
