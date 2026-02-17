@@ -93,7 +93,7 @@ ai-k8s/                          # Workspace root = Next.js app
 ### AI Agent (`src/lib/agent/`)
 - **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
 - **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology. Workspace-aware.
-- **tools.ts** — 13 tools. Workspace tools: `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. Deployment tools (workspace-scoped): `deployService`, `getStackStatus`, `getServiceDetail`, `getServiceLogs`, `updateService`, `removeService`. Catalog tools: `searchCatalog`, `getRecipe`, `createRecipe`, `searchHelmCharts`. Called via `getTools(tenantId, workspaceId)`.
+- **tools.ts** — 12 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`, `requestApp`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
 
 ### Deployment Engine (`src/lib/deployer/`)
 - **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Deployments are workspace-scoped. Engine takes `workspaceId` for deploy, looks up workspace namespace.
