@@ -4,7 +4,15 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RotateCw, Trash2, Calendar, Clock } from "lucide-react";
+import {
+  ArrowLeft,
+  RotateCw,
+  Trash2,
+  Calendar,
+  Clock,
+  Cpu,
+  MemoryStick
+} from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -204,6 +212,54 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
           </div>
         </div>
       </div>
+
+      {/* Resource Allocation */}
+      {Boolean(app.config.cpu_request || app.config.memory_request) && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Resources</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {Boolean(app.config.cpu_request) && (
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-blue-500/10">
+                      <Cpu className="size-4 text-blue-500" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">CPU</p>
+                      <p className="text-xs text-muted-foreground">
+                        {String(app.config.cpu_request)} request
+                        {app.config.cpu_limit
+                          ? ` · ${String(app.config.cpu_limit)} limit`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+              {Boolean(app.config.memory_request) && (
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center size-9 rounded-lg bg-purple-500/10">
+                      <MemoryStick className="size-4 text-purple-500" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">Memory</p>
+                      <p className="text-xs text-muted-foreground">
+                        {String(app.config.memory_request)} request
+                        {app.config.memory_limit
+                          ? ` · ${String(app.config.memory_limit)} limit`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Connection Info for non-web-UI apps */}
       {!app.recipe.hasWebUI && isRunning && (

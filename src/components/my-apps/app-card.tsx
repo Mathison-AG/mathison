@@ -10,7 +10,9 @@ import {
   Settings,
   RotateCw,
   Trash2,
-  Database
+  Database,
+  Cpu,
+  MemoryStick
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,6 +31,63 @@ import { OpenButton } from "./open-button";
 import { useRemoveApp, useRestartApp } from "@/hooks/use-my-apps";
 
 import type { Deployment } from "@/types/deployment";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
+
+// ─── Resource Info ───────────────────────────────────────
+
+interface ResourceInfoProps {
+  config: Record<string, unknown>;
+}
+
+function ResourceInfo({ config }: ResourceInfoProps) {
+  const cpuReq = config.cpu_request as string | undefined;
+  const memReq = config.memory_request as string | undefined;
+  const cpuLim = config.cpu_limit as string | undefined;
+  const memLim = config.memory_limit as string | undefined;
+
+  if (!cpuReq && !memReq) return null;
+
+  return (
+    <div className="flex items-center gap-3 text-[11px] text-muted-foreground w-full justify-center">
+      {cpuReq && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1">
+              <Cpu className="size-3 shrink-0" />
+              <span>
+                {cpuReq}
+                {cpuLim ? ` / ${cpuLim}` : ""}
+              </span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            CPU: {cpuReq} request{cpuLim ? ` · ${cpuLim} limit` : ""}
+          </TooltipContent>
+        </Tooltip>
+      )}
+      {memReq && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="flex items-center gap-1">
+              <MemoryStick className="size-3 shrink-0" />
+              <span>
+                {memReq}
+                {memLim ? ` / ${memLim}` : ""}
+              </span>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            Memory: {memReq} request{memLim ? ` · ${memLim} limit` : ""}
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
 
 // ─── Component ───────────────────────────────────────────
 
@@ -98,6 +157,9 @@ export function MyAppCard({ app }: MyAppCardProps) {
 
           {/* Status */}
           <StatusIndicator status={app.status} />
+
+          {/* Resource Usage */}
+          <ResourceInfo config={app.config} />
 
           {/* Actions */}
           <div className="flex items-center gap-2 w-full mt-auto pt-1">
