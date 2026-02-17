@@ -17,7 +17,6 @@ import type {
   RecipeDefinition,
   BuildContext,
   KubernetesResource,
-  HealthCheckContext,
   HealthCheckSpec,
   EnvVar,
 } from "../_base/types";
@@ -262,7 +261,7 @@ n8n is a powerful visual workflow automation tool — think Zapier, but self-hos
     url: `http://${ctx.name}.${ctx.namespace}.svc.cluster.local:5678`,
   }),
 
-  healthCheck: (_ctx: HealthCheckContext<N8nConfig>): HealthCheckSpec => ({
+  healthCheck: (): HealthCheckSpec => ({
     type: "http",
     port: 5678,
     path: "/healthz",

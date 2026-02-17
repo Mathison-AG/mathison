@@ -76,8 +76,8 @@ MinIO is fully S3-compatible, so you can use it with:
 
   image: "quay.io/minio/minio",
   imageTag: "latest",
-  command: (ctx) => ["minio"],
-  args: (ctx) => ["server", "/data", "--console-address", ":9001"],
+  command: () => ["minio"],
+  args: () => ["server", "/data", "--console-address", ":9001"],
 
   apiPort: 9000,
   consolePort: 9001,

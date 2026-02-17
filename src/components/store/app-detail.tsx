@@ -35,7 +35,7 @@ function formatInstallCount(count: number): string {
 
 export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
-  const { phase, deployment, error, install, reset } = useInstall();
+  const { phase, deployment, error, install } = useInstall();
   const hasDeps = recipe.dependencies.length > 0;
 
   function handleInstall() {
@@ -66,6 +66,7 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
             width={48}
             height={48}
             className="size-12"
+            priority
           />
         </div>
 

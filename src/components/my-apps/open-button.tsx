@@ -53,13 +53,14 @@ export function OpenButton({
         variant="default"
         size={size}
         className={className}
-        asChild
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.open(url, "_blank", "noopener,noreferrer");
+        }}
       >
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          <ExternalLink className="size-3.5 mr-1.5" />
-          Open
-        </a>
+        <ExternalLink className="size-3.5 mr-1.5" />
+        Open
       </Button>
     );
   }
