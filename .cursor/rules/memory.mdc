@@ -106,6 +106,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **secret() helper**: Use `secret(ctx.secrets, "key")` to safely access secrets (avoids `noUncheckedIndexedAccess` returning `string | undefined`).
 - **Registry**: `getRecipeDefinition(slug)`, `listRecipeDefinitions()`, `requireRecipeDefinition(slug)` from `src/recipes/registry.ts`.
 - **Recipe → Archetype mapping**: postgresql→database, redis→cache, uptime-kuma→webApp, minio→objectStore, n8n→custom build.
+- **Adding new recipes**: Follow the playbook in `.cursor/rules/recipes.mdc`. Backlog in `.cursor/tasks/backlog/recipe-backlog.md`. Add one at a time, test each before committing.
 - **Catalog metadata helper**: `src/lib/catalog/metadata.ts` bridges slim DB Recipe (slug, installCount, featured, embedding) with rich registry definitions for API responses.
 - **Data export/import**: `dataExport` and `dataImport` optional on RecipeDefinition. Two strategies: `command` (runs command in pod, captures stdout) and `files` (tars specified paths). Archetypes pass through these fields from descriptors. Contributors just add `dataExport`/`dataImport` to their recipe descriptor.
 - **DataExportContext**: Has `config`, `secrets`, `name`, `namespace` — used by command/paths functions to build per-instance commands.
