@@ -62,12 +62,10 @@ function buildIngressContext(): IngressContext | undefined {
 export async function resolveDependencies(params: {
   tenantId: string;
   workspaceId: string;
-  workspaceSlug: string;
   workspaceNamespace: string;
   recipe: RecipeDefinition<unknown>;
 }): Promise<ResolvedDependencies> {
-  const { tenantId, workspaceId, workspaceSlug, workspaceNamespace, recipe } =
-    params;
+  const { tenantId, workspaceId, workspaceNamespace, recipe } = params;
 
   if (!recipe.dependencies || Object.keys(recipe.dependencies).length === 0) {
     return { resolved: {}, newDeploymentIds: [] };
@@ -135,7 +133,6 @@ export async function resolveDependencies(params: {
     const depResult = await deployDependency({
       tenantId,
       workspaceId,
-      workspaceSlug,
       workspaceNamespace,
       alias,
       dep,
@@ -223,7 +220,6 @@ export async function resolveExistingDependencies(params: {
 async function deployDependency(params: {
   tenantId: string;
   workspaceId: string;
-  workspaceSlug: string;
   workspaceNamespace: string;
   alias: string;
   dep: { recipe: string; defaultConfig?: Record<string, unknown> };
@@ -232,7 +228,6 @@ async function deployDependency(params: {
   const {
     tenantId,
     workspaceId,
-    workspaceSlug,
     workspaceNamespace,
     alias,
     dep,
@@ -275,7 +270,6 @@ async function deployDependency(params: {
       recipeVersion: dbRecipe?.version ?? 1,
       name: alias,
       namespace: workspaceNamespace,
-      helmRelease: `${workspaceSlug}-${alias}`,
       config: depConfig as unknown as Prisma.InputJsonValue,
       secretsRef: null,
       managedResources: serializedResources,

@@ -82,7 +82,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Deployments are workspace-scoped**: `Deployment.workspaceId` + unique constraint `[workspaceId, name]`.
 - **Deployment engine**: `initiateDeployment()` takes `workspaceId`, looks up `workspace.namespace`.
 - **AI agent tools**: `getTools(tenantId, workspaceId)` — 3 workspace tools (list, create, delete) + deployment tools scoped to workspace.
-- **Workspace deletion**: Uninstalls Helm releases, deletes K8s namespace, marks deployments STOPPED, reassigns users to another workspace.
+- **Workspace deletion**: Deletes managed K8s resources via `deleteResources()`, deletes K8s namespace, marks deployments STOPPED, reassigns users to another workspace.
 - **Cannot delete last workspace**: Enforced in `deleteWorkspace()`.
 - **Sidebar workspace selector**: Dropdown in sidebar between brand and nav. Calls `/api/workspaces/switch` + `router.refresh()`.
 - **Settings workspace manager**: Full CRUD in `/settings` page with TanStack Query.
@@ -95,7 +95,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Helm values: write to temp file (os.tmpdir + randomUUID), pass via `--values`, cleanup in `finally`.
 - **ALL chart versions use NULL (latest)** for seed recipes — pinned versions reference Docker tags that get removed. This includes Bitnami charts AND the 8gears n8n chart (jumped from 0.26.1 to 2.0.1).
 - 8gears n8n chart 2.x: `persistence` moved under `main.persistence`, `valkey` dependency added (disabled by default). Values template updated for 2.x compatibility.
-- **Pod label selectors**: Worker and `getReleasePodStatus` try `app.kubernetes.io/instance=<releaseName>` first (Bitnami/standard), then fall back to `release=<releaseName>` (Helm convention used by community charts like official MinIO).
+- **Pod label selectors**: Worker and `getReleasePodStatus` try `app.kubernetes.io/instance=<deploymentName>` first (standard), then fall back to `release=<deploymentName>` (legacy Helm convention).
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
 ## Typed Recipe System (`src/recipes/`)
@@ -132,6 +132,15 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **MinIO uses official chart**: Bitnami removed their MinIO Docker images from Docker Hub. Switched to official chart (`minio/minio` from `https://charts.min.io/`). Image: `quay.io/minio/minio`. Values differ from Bitnami: `rootUser`/`rootPassword` at top level (not under `auth:`), `buckets:` array (not `defaultBuckets:` string), `persistence.accessMode` singular, `consoleIngress` (not `apiIngress`).
 - **Dockerfile.dev includes helm + kubectl**: Both are installed in the Alpine image for worker to execute Helm commands inside Docker.
 - **Port-forward for local access**: `kubectl port-forward svc/<svc-name> <local-port>:<svc-port> -n <ns>` — needed for kind clusters without ingress.
+
+## Deployment Audit Trail
+
+- **DeploymentEvent model**: Append-only event log. Actions: `created`, `config_changed`, `upgraded`, `restarted`, `health_changed`, `removed`, `failed`, `status_changed`.
+- **Events helper**: `src/lib/deployer/events.ts` — `recordCreated()`, `recordConfigChanged()`, `recordRestarted()`, `recordStatusChanged()`, `recordHealthChanged()`, `recordFailed()`, `recordRemoved()`.
+- **Fire-and-forget**: All event recording is async and error-swallowed — never blocks the main flow.
+- **Agent tool**: `getAppHistory({ appId })` returns last 25 events with human-readable diffs.
+- **Deployment model cleanup**: `helmRelease`, `chartVersion`, `revision` removed. K8s label lookups use `deployment.name` (matches `app.kubernetes.io/instance` set by builders).
+- **Helm no longer referenced in Deployment**: All references to Helm in the deployment lifecycle are gone. `helm.ts` still exists for legacy cleanup.
 
 ## One-Click Install
 

@@ -64,15 +64,15 @@ function arePodHealthy(
 
 // ─── K8s helpers (internal only) ─────────────────────────
 
-/** Get live K8s pod status for a Helm release */
+/** Get live K8s pod status for a deployment (by name used as label selector) */
 async function getK8sPodStatus(
   namespace: string,
-  helmRelease: string
+  deploymentName: string
 ): Promise<{
   pods: Array<{ name: string; status: string; restarts: number }>;
 }> {
   try {
-    const result = await getReleasePodStatus(namespace, helmRelease);
+    const result = await getReleasePodStatus(namespace, deploymentName);
     return {
       pods: result.pods.map((p) => ({
         name: p.name,
@@ -81,21 +81,21 @@ async function getK8sPodStatus(
       })),
     };
   } catch (err) {
-    console.error(`[getK8sPodStatus] Failed for ${helmRelease}:`, err);
+    console.error(`[getK8sPodStatus] Failed for ${deploymentName}:`, err);
     return { pods: [] };
   }
 }
 
-/** Get K8s pod logs for a Helm release */
+/** Get K8s pod logs for a deployment */
 async function getK8sPodLogs(
   namespace: string,
-  helmRelease: string,
+  deploymentName: string,
   lines: number
 ): Promise<string> {
   try {
-    return await getReleaseLogs(namespace, helmRelease, lines);
+    return await getReleaseLogs(namespace, deploymentName, lines);
   } catch (err) {
-    console.error(`[getK8sPodLogs] Failed for ${helmRelease}:`, err);
+    console.error(`[getK8sPodLogs] Failed for ${deploymentName}:`, err);
     return `Failed to retrieve logs: ${err instanceof Error ? err.message : "Unknown error"}`;
   }
 }
@@ -439,7 +439,7 @@ export function getTools(tenantId: string, workspaceId: string) {
 
         const apps = await Promise.all(
           deployments.map(async (d) => {
-            const k8sStatus = await getK8sPodStatus(d.namespace, d.helmRelease);
+            const k8sStatus = await getK8sPodStatus(d.namespace, d.name);
             const healthy = arePodHealthy(k8sStatus.pods);
             return {
               appId: d.id,
@@ -485,7 +485,7 @@ export function getTools(tenantId: string, workspaceId: string) {
 
         const k8sStatus = await getK8sPodStatus(
           deployment.namespace,
-          deployment.helmRelease
+          deployment.name
         );
         const healthy = arePodHealthy(k8sStatus.pods);
 
@@ -519,7 +519,6 @@ export function getTools(tenantId: string, workspaceId: string) {
           where: { id: appId, tenantId },
           select: {
             namespace: true,
-            helmRelease: true,
             name: true,
             status: true,
             recipe: { select: { displayName: true } },
@@ -541,14 +540,14 @@ export function getTools(tenantId: string, workspaceId: string) {
         // Get pod status for restart info
         const k8sStatus = await getK8sPodStatus(
           deployment.namespace,
-          deployment.helmRelease
+          deployment.name
         );
         const totalRestarts = k8sStatus.pods.reduce((sum, p) => sum + p.restarts, 0);
 
         // Get logs
         const logs = await getK8sPodLogs(
           deployment.namespace,
-          deployment.helmRelease,
+          deployment.name,
           100
         );
 
@@ -557,6 +556,84 @@ export function getTools(tenantId: string, workspaceId: string) {
           logs,
           totalRestarts
         );
+      },
+    }),
+
+    // ── App history ────────────────────────────────────────
+
+    getAppHistory: tool({
+      description:
+        "Look up what happened to an app over time — when it was installed, changed, restarted, or had issues. Use this to answer questions like 'what happened to my PostgreSQL?'.",
+      inputSchema: z.object({
+        appId: z.string().describe("The app's ID to get history for"),
+      }),
+      execute: async ({ appId }) => {
+        const deployment = await prisma.deployment.findFirst({
+          where: { id: appId, tenantId },
+          select: {
+            name: true,
+            recipe: { select: { displayName: true } },
+          },
+        });
+
+        if (!deployment) {
+          return { error: "App not found" };
+        }
+
+        const events = await prisma.deploymentEvent.findMany({
+          where: { deploymentId: appId },
+          orderBy: { createdAt: "desc" },
+          take: 25,
+        });
+
+        if (events.length === 0) {
+          return {
+            appName: deployment.recipe.displayName,
+            message: "No history recorded for this app yet.",
+            events: [] as Array<{
+              action: string;
+              when: string;
+              reason: string | null;
+              details: string | null;
+            }>,
+          };
+        }
+
+        return {
+          appName: deployment.recipe.displayName,
+          events: events.map((e) => {
+            const newState = (e.newState ?? {}) as Record<string, unknown>;
+            const previousState = (e.previousState ?? {}) as Record<string, unknown>;
+
+            let details: string | null = null;
+            if (e.action === "config_changed") {
+              const prev = previousState.config as Record<string, unknown> | undefined;
+              const next = newState.config as Record<string, unknown> | undefined;
+              if (prev && next) {
+                const changes: string[] = [];
+                for (const key of Object.keys(next)) {
+                  if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
+                    changes.push(`${key}: ${String(prev[key] ?? "default")} → ${String(next[key])}`);
+                  }
+                }
+                details = changes.length > 0 ? changes.join(", ") : "Configuration updated";
+              }
+            } else if (e.action === "failed") {
+              details = (newState.error as string) || null;
+            } else if (e.action === "health_changed") {
+              details = (newState.reason as string) || null;
+            } else if (e.action === "status_changed") {
+              details = `${String(previousState.status ?? "unknown")} → ${String(newState.status ?? "unknown")}`;
+            }
+
+            return {
+              action: e.action,
+              when: timeAgo(e.createdAt),
+              reason: e.reason,
+              details,
+            };
+          }),
+        };
       },
     }),
 

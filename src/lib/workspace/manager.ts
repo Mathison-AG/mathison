@@ -13,8 +13,8 @@ import {
   applyResourceQuota,
   applyNetworkPolicy,
 } from "@/lib/cluster/kubernetes";
+import { deleteResources } from "@/recipes/_base/apply";
 import { buildQuotaSpec } from "@/lib/tenant/quota";
-import { helmUninstall } from "@/lib/cluster/helm";
 
 import type { QuotaSpec } from "@/lib/tenant/quota";
 
@@ -250,7 +250,7 @@ export async function deleteWorkspace(
   // 2. Mark all deployments in this workspace as DELETING
   const deployments = await prisma.deployment.findMany({
     where: { workspaceId, status: { notIn: ["STOPPED", "DELETING"] } },
-    select: { id: true, helmRelease: true, namespace: true },
+    select: { id: true, name: true, namespace: true, managedResources: true },
   });
 
   if (deployments.length > 0) {
@@ -260,13 +260,16 @@ export async function deleteWorkspace(
     });
   }
 
-  // 3. Uninstall Helm releases (best-effort, namespace deletion will clean up anyway)
+  // 3. Delete managed K8s resources (best-effort, namespace deletion will clean up anyway)
   for (const dep of deployments) {
     try {
-      await helmUninstall(dep.helmRelease, dep.namespace);
+      if (dep.managedResources) {
+        const resources = JSON.parse(dep.managedResources) as Array<Record<string, unknown>>;
+        await deleteResources(resources as never);
+      }
     } catch (err) {
       console.warn(
-        `[workspace] Failed to uninstall ${dep.helmRelease} (will be cleaned up by namespace deletion):`,
+        `[workspace] Failed to delete resources for ${dep.name} (will be cleaned up by namespace deletion):`,
         err
       );
     }

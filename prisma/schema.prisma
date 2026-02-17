@@ -193,7 +193,6 @@ model Deployment {
   recipeVersion Int              @map("recipe_version")
   name          String // "my-postgresql"
   namespace     String // workspace's K8s namespace
-  helmRelease   String           @map("helm_release")
   config        Json             @default("{}")
   secretsRef    String?          @map("secrets_ref")
   status        DeploymentStatus @default(PENDING)
@@ -201,17 +200,31 @@ model Deployment {
   localPort     Int?             @map("local_port")     // Port-forward local port
   servicePort   Int?             @map("service_port")   // K8s service port
   serviceName   String?          @map("service_name")   // K8s service name
-  chartVersion  String?          @map("chart_version")  // e.g. "postgresql-16.2.5"
   appVersion    String?          @map("app_version")    // e.g. "16.2.0"
-  revision      Int              @default(1)            // Helm revision number
-  managedResources String?        @map("managed_resources") // JSON-serialized K8s resources
+  managedResources String?       @map("managed_resources") // JSON-serialized K8s resources
   errorMessage  String?          @map("error_message")
   dependsOn     String[]         @map("depends_on") // Deployment IDs
+  events        DeploymentEvent[]
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
   @@unique([workspaceId, name])
   @@map("deployments")
+}
+
+model DeploymentEvent {
+  id            String   @id @default(cuid())
+  deploymentId  String   @map("deployment_id")
+  deployment    Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+  action        String   // "created", "config_changed", "upgraded", "restarted", "health_changed", "removed"
+  previousState Json?    @map("previous_state")
+  newState      Json     @map("new_state")
+  reason        String?  // "User requested", "Auto-healed", "Dependency updated"
+  triggeredBy   String?  @map("triggered_by") // User ID or "system"
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([deploymentId, createdAt])
+  @@map("deployment_events")
 }
 
 enum DeploymentStatus {

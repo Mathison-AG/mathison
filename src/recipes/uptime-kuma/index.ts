@@ -80,8 +80,9 @@ Create a public status page to share uptime with your team or users.`,
     limits: { cpu: config.cpu_limit, memory: config.memory_limit },
   }),
 
-  fsGroup: 1000,
-  runAsUser: 1000,
+  // Note: Uptime Kuma's entrypoint runs `chown -R node:node /app/data`
+  // which requires root. The container drops to `node` (UID 1000) via su-exec.
+  // Do NOT set runAsUser — the container manages user switching itself.
 
   livenessProbe: {
     type: "http",

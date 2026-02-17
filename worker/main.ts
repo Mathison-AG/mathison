@@ -12,6 +12,7 @@ import { Worker, Job } from "bullmq";
 import { connection } from "../src/lib/queue/connection";
 import { JOB_NAMES } from "../src/lib/queue/jobs";
 import { applyResources, deleteResources } from "../src/recipes/_base/apply";
+import { deleteStatefulSetPVCs } from "../src/lib/cluster/kubernetes";
 import { waitForReady } from "../src/lib/cluster/kubernetes";
 import { assignPort } from "../src/lib/cluster/port-manager";
 import {
@@ -21,6 +22,11 @@ import {
   isPortForwardActive,
 } from "../src/lib/cluster/port-forward";
 import { prisma } from "../src/lib/db";
+import {
+  recordStatusChanged,
+  recordHealthChanged,
+  recordFailed,
+} from "../src/lib/deployer/events";
 
 import type {
   DeployJobData,
@@ -63,6 +69,44 @@ function extractPodSelector(resources: KubernetesResource[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * Extract StatefulSet names and their volumeClaimTemplate names.
+ * Used during undeploy to clean up PVCs that K8s doesn't auto-delete.
+ */
+function extractStatefulSetPVCInfo(
+  resources: KubernetesResource[]
+): Array<{ name: string; namespace: string; vctNames: string[] }> {
+  const results: Array<{ name: string; namespace: string; vctNames: string[] }> = [];
+
+  for (const resource of resources) {
+    if (resource.kind === "StatefulSet") {
+      const name = resource.metadata?.name;
+      const ns = resource.metadata?.namespace ?? "";
+      const spec = resource as {
+        spec?: {
+          volumeClaimTemplates?: Array<{
+            metadata?: { name?: string };
+          }>;
+        };
+      };
+
+      const vctNames = (spec.spec?.volumeClaimTemplates ?? [])
+        .map((vct) => vct.metadata?.name)
+        .filter((n): n is string => !!n);
+
+      if (name) {
+        results.push({
+          name,
+          namespace: ns,
+          vctNames: vctNames.length > 0 ? vctNames : ["data"],
+        });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -210,16 +254,28 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
           errorMessage: null,
         },
       });
+
+      recordStatusChanged({
+        deploymentId,
+        previousStatus: "DEPLOYING",
+        newStatus: "RUNNING",
+        reason: "Deployment completed successfully",
+      });
+
       console.log(`[worker] Deploy SUCCESS: ${recipeSlug} is RUNNING`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
+      const failMsg = `Service deployed but not yet healthy: ${podStatuses}`;
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Service deployed but not yet healthy: ${podStatuses}`,
+          errorMessage: failMsg,
         },
       });
+
+      recordFailed({ deploymentId, error: failMsg });
+
       console.warn(`[worker] Deploy PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
 
@@ -235,6 +291,8 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
         errorMessage: errorMessage.slice(0, 1000),
       },
     });
+
+    recordFailed({ deploymentId, error: errorMessage.slice(0, 1000) });
 
     throw err;
   }
@@ -260,6 +318,15 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
     try {
       const resources = parseResources(resourcesJson);
       await deleteResources(resources);
+      // Also clean up StatefulSet PVCs
+      const stsInfo = extractStatefulSetPVCInfo(resources);
+      for (const sts of stsInfo) {
+        await deleteStatefulSetPVCs(
+          sts.namespace || namespace,
+          sts.name,
+          sts.vctNames
+        );
+      }
     } catch {
       // Ignore — resources may not exist either
     }
@@ -280,9 +347,27 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
 
     const deleted = results.filter((r) => r.deleted).length;
     console.log(`[worker] Deleted ${deleted}/${results.length} K8s resources`);
+    await job.updateProgress(50);
+
+    // 3. Clean up PVCs from StatefulSet volumeClaimTemplates
+    //    K8s does NOT auto-delete these when the StatefulSet is removed.
+    //    Stale PVCs cause credential mismatches on redeployment.
+    const stsInfo = extractStatefulSetPVCInfo(resources);
+    for (const sts of stsInfo) {
+      const pvcResult = await deleteStatefulSetPVCs(
+        sts.namespace || namespace,
+        sts.name,
+        sts.vctNames
+      );
+      if (pvcResult.deleted.length > 0) {
+        console.log(
+          `[worker] Cleaned up ${pvcResult.deleted.length} PVC(s) for StatefulSet ${sts.name}`
+        );
+      }
+    }
     await job.updateProgress(70);
 
-    // 3. Delete the deployment record
+    // 4. Delete the deployment record
     await prisma.deployment.delete({
       where: { id: deploymentId },
     });
@@ -370,16 +455,28 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
           errorMessage: null,
         },
       });
+
+      recordStatusChanged({
+        deploymentId,
+        previousStatus: "DEPLOYING",
+        newStatus: "RUNNING",
+        reason: "Upgrade completed successfully",
+      });
+
       console.log(`[worker] Upgrade SUCCESS: ${recipeSlug} is RUNNING`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
+      const failMsg = `Service updated but not yet healthy: ${podStatuses}`;
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: `Service updated but not yet healthy: ${podStatuses}`,
+          errorMessage: failMsg,
         },
       });
+
+      recordFailed({ deploymentId, error: failMsg });
+
       console.warn(`[worker] Upgrade PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
 
@@ -395,6 +492,8 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
         errorMessage: errorMessage.slice(0, 1000),
       },
     });
+
+    recordFailed({ deploymentId, error: errorMessage.slice(0, 1000) });
 
     throw err;
   }
@@ -438,13 +537,20 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
     );
 
     if (!ready) {
+      const reason = "Health check failed: service is not responding";
       console.warn(`[worker] Health check: ${deployment.name} is degraded`);
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: "Health check failed: service is not responding",
+          errorMessage: reason,
         },
+      });
+
+      recordHealthChanged({
+        deploymentId,
+        healthy: false,
+        reason,
       });
     }
   } catch (err) {

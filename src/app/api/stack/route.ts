@@ -47,23 +47,23 @@ export async function GET() {
       const results = await Promise.allSettled(
         running.map(async (d) => {
           const [resources, ports] = await Promise.all([
-            getReleaseResources(d.namespace, d.helmRelease),
-            getReleaseServicePorts(d.namespace, d.helmRelease),
+            getReleaseResources(d.namespace, d.name),
+            getReleaseServicePorts(d.namespace, d.name),
           ]);
-          return { helmRelease: d.helmRelease, resources, ports };
+          return { name: d.name, resources, ports };
         })
       );
       for (const result of results) {
         if (result.status === "fulfilled") {
-          resourceMap.set(result.value.helmRelease, result.value.resources);
-          portMap.set(result.value.helmRelease, result.value.ports);
+          resourceMap.set(result.value.name, result.value.resources);
+          portMap.set(result.value.name, result.value.ports);
         }
       }
     }
 
     const nodes = deployments.map((d) => {
       // Summarize resources from first pod's first container
-      const podResources = resourceMap.get(d.helmRelease);
+      const podResources = resourceMap.get(d.name);
       const mainContainer = podResources?.[0]?.containers?.[0];
 
       return {
@@ -88,7 +88,7 @@ export async function GET() {
                 memoryLimit: mainContainer.limits.memory,
               }
             : null,
-          ports: (portMap.get(d.helmRelease) ?? []).map((p) => ({
+          ports: (portMap.get(d.name) ?? []).map((p) => ({
             port: p.port,
             name: p.name,
           })),

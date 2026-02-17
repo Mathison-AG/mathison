@@ -50,12 +50,12 @@ export async function GET(
     if (deployment.status === "RUNNING" || deployment.status === "DEPLOYING") {
       try {
         [resources, ports] = await Promise.all([
-          getReleaseResources(deployment.namespace, deployment.helmRelease),
-          getReleaseServicePorts(deployment.namespace, deployment.helmRelease),
+          getReleaseResources(deployment.namespace, deployment.name),
+          getReleaseServicePorts(deployment.namespace, deployment.name),
         ]);
       } catch (err) {
         console.warn(
-          `[GET /api/deployments/[id]] Failed to fetch K8s data for ${deployment.helmRelease}:`,
+          `[GET /api/deployments/[id]] Failed to fetch K8s data for ${deployment.name}:`,
           err
         );
       }

@@ -14,6 +14,7 @@ import { incrementInstallCount } from "@/lib/catalog/service";
 import { requireRecipeDefinition } from "@/recipes/registry";
 import { generateSecretsFromDefinition, readK8sSecret } from "./secrets";
 import { resolveDependencies, resolveExistingDependencies } from "./dependencies";
+import { recordCreated, recordConfigChanged, recordRestarted, recordRemoved } from "./events";
 import { deploymentQueue } from "@/lib/queue/queues";
 import { JOB_NAMES } from "@/lib/queue/jobs";
 
@@ -110,7 +111,6 @@ export async function initiateDeployment(params: {
   const { resolved: depInfo, newDeploymentIds } = await resolveDependencies({
     tenantId,
     workspaceId,
-    workspaceSlug: workspace.slug,
     workspaceNamespace: workspace.namespace,
     recipe,
   });
@@ -146,7 +146,6 @@ export async function initiateDeployment(params: {
       recipeVersion: dbRecipe?.version ?? 1,
       name: deploymentName,
       namespace: workspace.namespace,
-      helmRelease: `${workspace.slug}-${deploymentName}`,
       config: validatedConfig as unknown as Prisma.InputJsonValue,
       secretsRef: null, // Secrets are now part of the build() output
       managedResources: serializedResources,
@@ -155,7 +154,14 @@ export async function initiateDeployment(params: {
     },
   });
 
-  // 10. Queue deploy job
+  // 10. Record audit event (fire-and-forget)
+  recordCreated({
+    deploymentId: deployment.id,
+    recipeSlug,
+    config: validatedConfig,
+  });
+
+  // 11. Queue deploy job
   const jobData: DeployJobData = {
     deploymentId: deployment.id,
     recipeSlug,
@@ -278,6 +284,18 @@ export async function initiateUpgrade(params: {
     },
   });
 
+  // Record audit event (fire-and-forget)
+  const configChanged = JSON.stringify(existingConfig) !== JSON.stringify(validatedConfig);
+  if (configChanged) {
+    recordConfigChanged({
+      deploymentId,
+      previousConfig: existingConfig,
+      newConfig: validatedConfig,
+    });
+  } else {
+    recordRestarted({ deploymentId });
+  }
+
   // Queue upgrade job
   const jobData: UpgradeJobData = {
     deploymentId,
@@ -357,6 +375,12 @@ export async function initiateRemoval(params: {
     const resources = recipe.build(buildCtx);
     serializedResources = JSON.stringify(resources);
   }
+
+  // Record audit event (fire-and-forget)
+  recordRemoved({
+    deploymentId,
+    lastConfig: (deployment.config ?? {}) as Record<string, unknown>,
+  });
 
   // Update status
   await prisma.deployment.update({

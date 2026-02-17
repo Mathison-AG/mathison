@@ -28,15 +28,12 @@ export interface Deployment {
   id: string;
   name: string;
   namespace: string;
-  helmRelease: string;
   status: DeploymentStatus;
   url: string | null;
   localPort: number | null;
   servicePort: number | null;
   serviceName: string | null;
-  chartVersion: string | null;
   appVersion: string | null;
-  revision: number;
   errorMessage: string | null;
   config: Record<string, unknown>;
   dependsOn: string[];

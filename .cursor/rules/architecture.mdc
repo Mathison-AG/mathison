@@ -105,13 +105,13 @@ ai-k8s/                          # Workspace root = Next.js app
 ### AI Agent (`src/lib/agent/`)
 - **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
 - **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology. Workspace-aware.
-- **tools.ts** — 12 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`, `requestApp`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
+- **tools.ts** — 13 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `getAppHistory`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`, `requestApp`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
 
 ### Deployment Engine V2 (`src/lib/deployer/`)
-- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Uses recipe registry (not DB) for recipe lookup. Validates config via Zod, calls `build()` for K8s resources, queues SSA apply jobs. No more Helm.
+- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Uses recipe registry (not DB) for recipe lookup. Validates config via Zod, calls `build()` for K8s resources, queues SSA apply jobs. Records audit events. No more Helm.
+- **events.ts** — Append-only audit trail. `recordCreated()`, `recordConfigChanged()`, `recordRestarted()`, `recordStatusChanged()`, `recordHealthChanged()`, `recordFailed()`, `recordRemoved()`. Fire-and-forget.
 - **dependencies.ts** — `resolveDependencies()`. Uses recipe `connectionInfo()` for typed connection data. Auto-deploys missing dependencies via SSA.
 - **secrets.ts** — `generateSecretsFromDefinition()` (typed) + legacy `generateSecrets()`. Uses `crypto.randomBytes()` for strong secrets.
-- **template.ts** — DELETED. No more Handlebars rendering.
 
 ### Cluster Integration (`src/lib/cluster/`)
 - **kubernetes.ts** — KubeConfig, namespace CRUD, pod status/logs, resource queries.
@@ -150,7 +150,8 @@ ai-k8s/                          # Workspace root = Next.js app
 | Workspace | Isolated environment. Belongs to Tenant. Maps to K8s namespace (`{tenantSlug}-{workspaceSlug}`). Has quota, status (ACTIVE/DELETING/DELETED). |
 | Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate, hasWebUI |
 | RecipeVersion | Version history for recipes |
-| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. Has localPort/servicePort/serviceName for port-forwarding. |
+| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. Has localPort/servicePort/serviceName for port-forwarding. No more helmRelease/chartVersion/revision. |
+| DeploymentEvent | Append-only audit trail for deployment state changes. Actions: created, config_changed, restarted, health_changed, removed, failed, status_changed. Indexed on [deploymentId, createdAt]. |
 | Stack | Groups of deployments (future use) |
 | Conversation | Chat thread. Belongs to User + Tenant |
 | Message | Chat message. Belongs to Conversation. Has role + content |

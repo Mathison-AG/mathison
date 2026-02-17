@@ -181,6 +181,8 @@ export function statefulSet(
       ? buildProbe(spec.readinessProbe)
       : undefined,
     securityContext: spec.containerSecurityContext,
+    command: spec.command,
+    args: spec.args,
   };
 
   return {

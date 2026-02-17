@@ -280,16 +280,16 @@ export async function getPodLogs(
  */
 export async function getReleaseLogs(
   namespace: string,
-  helmRelease: string,
+  instanceName: string,
   lines = 100
 ): Promise<string> {
   const pods = await listPods(
     namespace,
-    `app.kubernetes.io/instance=${helmRelease}`
+    `app.kubernetes.io/instance=${instanceName}`
   );
 
   if (pods.length === 0) {
-    return `No pods found for release '${helmRelease}' in namespace '${namespace}'.`;
+    return `No pods found for '${instanceName}' in namespace '${namespace}'.`;
   }
 
   const logParts: string[] = [];
@@ -364,23 +364,23 @@ export async function getDeploymentStatus(
  */
 export async function getReleasePodStatus(
   namespace: string,
-  helmRelease: string
+  instanceName: string
 ): Promise<{ pods: PodInfo[] }> {
   try {
     // Try standard Kubernetes label first
     let pods = await listPods(
       namespace,
-      `app.kubernetes.io/instance=${helmRelease}`
+      `app.kubernetes.io/instance=${instanceName}`
     );
 
-    // Fall back to Helm's release label
+    // Fall back to Helm's release label (legacy deployments)
     if (pods.length === 0) {
-      pods = await listPods(namespace, `release=${helmRelease}`);
+      pods = await listPods(namespace, `release=${instanceName}`);
     }
 
     return { pods };
   } catch (err) {
-    console.error(`[k8s] Failed to get pod status for ${helmRelease}:`, err);
+    console.error(`[k8s] Failed to get pod status for ${instanceName}:`, err);
     return { pods: [] };
   }
 }
@@ -415,6 +415,48 @@ export async function waitForReady(
   // Final check
   const pods = await listPods(namespace, labelSelector);
   return { ready: pods.length > 0 && pods.every((p) => p.ready), pods };
+}
+
+// ─── PVC cleanup for StatefulSets ─────────────────────────
+
+/**
+ * Delete PVCs that were created by a StatefulSet's volumeClaimTemplates.
+ * These follow the naming convention: {vct-name}-{statefulset-name}-{ordinal}
+ * K8s doesn't auto-delete these when the StatefulSet is removed.
+ */
+export async function deleteStatefulSetPVCs(
+  namespace: string,
+  statefulSetName: string,
+  volumeClaimTemplateNames: string[] = ["data"],
+  replicas = 1
+): Promise<{ deleted: string[]; errors: string[] }> {
+  const api = getCoreApi();
+  const deleted: string[] = [];
+  const errors: string[] = [];
+
+  for (const vctName of volumeClaimTemplateNames) {
+    for (let i = 0; i < replicas; i++) {
+      const pvcName = `${vctName}-${statefulSetName}-${i}`;
+      try {
+        await api.deleteNamespacedPersistentVolumeClaim({
+          name: pvcName,
+          namespace,
+        });
+        deleted.push(pvcName);
+        console.log(`[k8s] Deleted PVC: ${pvcName} in ${namespace}`);
+      } catch (err: unknown) {
+        if (isK8sError(err) && err.statusCode === 404) {
+          // PVC doesn't exist — fine
+          continue;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${pvcName}: ${msg}`);
+        console.warn(`[k8s] Failed to delete PVC ${pvcName}: ${msg}`);
+      }
+    }
+  }
+
+  return { deleted, errors };
 }
 
 // ─── Service operations ───────────────────────────────────
@@ -506,14 +548,14 @@ export interface ReleaseServicePort {
  */
 export async function getReleaseServicePorts(
   namespace: string,
-  helmRelease: string
+  instanceName: string
 ): Promise<ReleaseServicePort[]> {
   const api = getCoreApi();
 
   try {
     const res = await api.listNamespacedService({
       namespace,
-      labelSelector: `app.kubernetes.io/instance=${helmRelease}`,
+      labelSelector: `app.kubernetes.io/instance=${instanceName}`,
     });
 
     const services = res.items ?? [];
@@ -564,14 +606,14 @@ export interface PodResources {
  */
 export async function getReleaseResources(
   namespace: string,
-  helmRelease: string
+  instanceName: string
 ): Promise<PodResources[]> {
   const api = getCoreApi();
 
   try {
     const res = await api.listNamespacedPod({
       namespace,
-      labelSelector: `app.kubernetes.io/instance=${helmRelease}`,
+      labelSelector: `app.kubernetes.io/instance=${instanceName}`,
     });
 
     return (res.items ?? []).map((pod) => ({

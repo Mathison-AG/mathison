@@ -14,7 +14,6 @@ import {
   Cpu,
   MemoryStick,
   Tag,
-  Hash,
   Globe,
   Network,
 } from "lucide-react";
@@ -149,11 +148,6 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
           </div>
           <p className="text-muted-foreground">
             {deployment.recipe.displayName}
-            {deployment.chartVersion && (
-              <span className="text-xs ml-2 text-muted-foreground/70">
-                ({deployment.chartVersion})
-              </span>
-            )}
           </p>
           {deployment.url && (
             <a
@@ -241,17 +235,6 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                     icon={<Tag className="size-3" />}
                   />
                 )}
-                {deployment.chartVersion && (
-                  <DetailRow
-                    label="Template"
-                    value={deployment.chartVersion}
-                  />
-                )}
-                <DetailRow
-                  label="Revision"
-                  value={`#${deployment.revision}`}
-                  icon={<Hash className="size-3" />}
-                />
                 <DetailRow
                   label="Created"
                   value={formatDate(deployment.createdAt)}
