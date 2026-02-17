@@ -9,9 +9,16 @@ import type { Recipe } from "@/types/recipe";
 interface AppGridProps {
   recipes: Recipe[];
   isLoading?: boolean;
+  installedSlugs?: Set<string>;
+  onInstall?: (recipe: Recipe) => void;
 }
 
-export function AppGrid({ recipes, isLoading }: AppGridProps) {
+export function AppGrid({
+  recipes,
+  isLoading,
+  installedSlugs,
+  onInstall,
+}: AppGridProps) {
   if (isLoading) {
     return (
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -38,7 +45,12 @@ export function AppGrid({ recipes, isLoading }: AppGridProps) {
   return (
     <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {recipes.map((recipe) => (
-        <AppCard key={recipe.id} recipe={recipe} />
+        <AppCard
+          key={recipe.id}
+          recipe={recipe}
+          isInstalled={installedSlugs?.has(recipe.slug)}
+          onInstall={onInstall}
+        />
       ))}
     </div>
   );

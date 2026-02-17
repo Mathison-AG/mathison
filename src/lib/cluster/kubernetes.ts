@@ -359,17 +359,25 @@ export async function getDeploymentStatus(
 
 /**
  * Get pod status for a Helm release (used by agent tools).
- * Matches pods by `app.kubernetes.io/instance=<helmRelease>` label.
+ * Tries `app.kubernetes.io/instance` (Bitnami/standard) first,
+ * then falls back to `release` label (used by many community charts).
  */
 export async function getReleasePodStatus(
   namespace: string,
   helmRelease: string
 ): Promise<{ pods: PodInfo[] }> {
   try {
-    const pods = await listPods(
+    // Try standard Kubernetes label first
+    let pods = await listPods(
       namespace,
       `app.kubernetes.io/instance=${helmRelease}`
     );
+
+    // Fall back to Helm's release label
+    if (pods.length === 0) {
+      pods = await listPods(namespace, `release=${helmRelease}`);
+    }
+
     return { pods };
   } catch (err) {
     console.error(`[k8s] Failed to get pod status for ${helmRelease}:`, err);

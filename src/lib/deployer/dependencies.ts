@@ -48,7 +48,7 @@ const SERVICE_NAME_SUFFIXES: Record<string, string> = {
   redis: "-redis-master",
   mysql: "-mysql",
   mongodb: "-mongodb",
-  minio: "-minio"
+  minio: ""
 };
 
 // ─── Dependency resolution ────────────────────────────────

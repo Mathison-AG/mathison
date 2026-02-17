@@ -626,8 +626,8 @@ MinIO is fully S3-compatible, so you can use it with:
   tags: ["storage", "s3", "object-storage", "minio", "backup", "files"],
   iconUrl: undefined,
   sourceType: "helm",
-  chartUrl: "oci://registry-1.docker.io/bitnamicharts/minio",
-  chartVersion: undefined, // Use latest — pinned versions reference Docker tags that get removed
+  chartUrl: "minio/minio",
+  chartVersion: undefined, // Use latest from official MinIO chart repo (https://charts.min.io/)
   configSchema: {
     storage_size: {
       type: "string",
@@ -680,11 +680,13 @@ MinIO is fully S3-compatible, so you can use it with:
   },
   valuesTemplate: `mode: standalone
 
-auth:
-  rootUser: "{{secrets.root_user}}"
-  rootPassword: "{{secrets.root_password}}"
+rootUser: "{{secrets.root_user}}"
+rootPassword: "{{secrets.root_password}}"
 
-defaultBuckets: "{{config.default_buckets}}"
+buckets:
+  - name: "{{config.default_buckets}}"
+    policy: none
+    purge: false
 
 resources:
   requests:
@@ -697,8 +699,7 @@ resources:
 persistence:
   enabled: true
   size: "{{config.storage_size}}"
-  accessModes:
-    - ReadWriteOnce
+  accessMode: ReadWriteOnce
 
 {{#if cluster.ingress_enabled}}
 ingress:
@@ -706,21 +707,29 @@ ingress:
   ingressClassName: "{{cluster.ingress_class}}"
   annotations:
     cert-manager.io/cluster-issuer: "{{cluster.tls_cluster_issuer}}"
-  hostname: "minio-{{tenant.slug}}.{{cluster.domain}}"
-  tls: true
+  hosts:
+    - "s3-{{tenant.slug}}.{{cluster.domain}}"
+  tls:
+    - secretName: minio-s3-tls
+      hosts:
+        - "s3-{{tenant.slug}}.{{cluster.domain}}"
 
-apiIngress:
+consoleIngress:
   enabled: true
   ingressClassName: "{{cluster.ingress_class}}"
   annotations:
     cert-manager.io/cluster-issuer: "{{cluster.tls_cluster_issuer}}"
-  hostname: "s3-{{tenant.slug}}.{{cluster.domain}}"
-  tls: true
+  hosts:
+    - "minio-{{tenant.slug}}.{{cluster.domain}}"
+  tls:
+    - secretName: minio-console-tls
+      hosts:
+        - "minio-{{tenant.slug}}.{{cluster.domain}}"
 {{else}}
 ingress:
   enabled: false
 
-apiIngress:
+consoleIngress:
   enabled: false
 {{/if}}`,
   dependencies: [],

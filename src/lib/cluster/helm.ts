@@ -421,7 +421,16 @@ export async function helmRecoverStuckRelease(
       }
     }
 
-    // Release is in a healthy state (deployed, failed, etc.)
+    if (status === "failed") {
+      // Failed release blocks re-install — uninstall so we can start fresh
+      console.log(
+        `[helm] Release ${releaseName} is in failed state — uninstalling for retry`
+      );
+      await helmUninstall(releaseName, namespace);
+      return { recovered: true, action: "uninstalled" };
+    }
+
+    // Release is in a healthy state (deployed, superseded, etc.)
     return { recovered: false, action: "none" };
   } catch (err: unknown) {
     // Release doesn't exist — nothing to recover
@@ -485,16 +494,81 @@ function parseHelmStatusOutput(stdout: string): HelmReleaseStatus {
 // ─── Error handling ───────────────────────────────────────
 
 function getErrorMessage(err: unknown): string {
-  if (
-    typeof err === "object" &&
-    err !== null &&
-    "stderr" in err &&
-    typeof (err as { stderr: string }).stderr === "string"
-  ) {
-    return (err as { stderr: string }).stderr;
+  if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>;
+
+    // execFile errors have stderr, stdout, and message — check all
+    const stderr = typeof obj.stderr === "string" ? obj.stderr.trim() : "";
+    const stdout = typeof obj.stdout === "string" ? obj.stdout.trim() : "";
+    const message =
+      err instanceof Error ? err.message.trim() : "";
+
+    // Prefer stderr (where Helm usually writes errors)
+    if (stderr) return stderr;
+
+    // For stdout (especially OCI Helm), extract the error line — OCI commands
+    // print progress to stdout, with the actual error at the end
+    if (stdout) {
+      const errorLine = extractErrorLine(stdout);
+      if (errorLine) return errorLine;
+      return stdout;
+    }
+
+    // Fall back to err.message (also extract error line if it contains stdout noise)
+    if (message) {
+      const errorLine = extractErrorLine(message);
+      if (errorLine) return errorLine;
+      return message;
+    }
+
+    // Last resort: stringify the exit code / signal
+    const code = obj.code;
+    const signal = obj.signal;
+    if (code !== undefined || signal !== undefined) {
+      return `Process exited with code ${code ?? "unknown"}, signal ${signal ?? "none"}`;
+    }
   }
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+/**
+ * Extract the most meaningful error line from multiline Helm output.
+ * OCI commands print pull progress first, with the real error at the end.
+ */
+function extractErrorLine(output: string): string | null {
+  const lines = output.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  // Look for "Error:" lines (Helm standard error prefix)
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line && /^Error:/i.test(line)) {
+      return line;
+    }
+  }
+
+  // Look for "FAILED" lines
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line && /FAILED/i.test(line)) {
+      return line;
+    }
+  }
+
+  // Look for lines starting with common error indicators
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (
+      line &&
+      (/^(error|fatal|warning|failed|unable|cannot)/i.test(line) ||
+        line.includes("timed out") ||
+        line.includes("timeout"))
+    ) {
+      return line;
+    }
+  }
+
+  return null;
 }
 
 function isHelmNotFound(err: unknown): boolean {
@@ -507,8 +581,41 @@ function wrapHelmError(
   release: string,
   err: unknown
 ): Error {
-  const msg = getErrorMessage(err);
+  const rawMsg = getErrorMessage(err);
   const label = release ? `${operation} ${release}` : operation;
-  console.error(`[helm] ${label} failed:`, msg);
-  return new Error(`[helm:${label}] ${msg}`);
+
+  // Log full detail for debugging
+  console.error(`[helm] ${label} failed:`, rawMsg || "(no error message)");
+  if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (obj.code !== undefined) console.error(`[helm] exit code: ${obj.code}`);
+    if (obj.signal) console.error(`[helm] signal: ${obj.signal}`);
+    if (obj.killed) console.error(`[helm] process was killed (timeout?)`);
+  }
+
+  // Clean up the message — strip Helm prefixes, extract the meaningful part
+  const cleaned = cleanHelmError(rawMsg) || `Helm ${operation} failed for ${release}`;
+  return new Error(cleaned);
+}
+
+/**
+ * Strip noisy Helm prefixes and extract the meaningful error.
+ */
+function cleanHelmError(raw: string): string {
+  if (!raw) return "";
+
+  let msg = raw;
+
+  // Remove common Helm prefixes
+  msg = msg.replace(/^Error:\s*/i, "");
+  msg = msg.replace(/^INSTALLATION FAILED:\s*/i, "");
+  msg = msg.replace(/^UPGRADE FAILED:\s*/i, "");
+
+  // Trim to first meaningful line if multiline
+  const lines = msg.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length > 0) {
+    msg = lines[0] ?? msg;
+  }
+
+  return msg.trim();
 }

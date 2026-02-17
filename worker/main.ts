@@ -17,7 +17,7 @@ import {
   helmRecoverStuckRelease,
   addRepo
 } from "../src/lib/cluster/helm";
-import { waitForReady, getIngressUrl } from "../src/lib/cluster/kubernetes";
+import { waitForReady, listPods, getIngressUrl } from "../src/lib/cluster/kubernetes";
 import { deleteK8sSecret } from "../src/lib/deployer/secrets";
 import { prisma } from "../src/lib/db";
 
@@ -53,6 +53,7 @@ async function ensureHelmRepo(chartUrl: string): Promise<void> {
   // Known repos
   const KNOWN_REPOS: Record<string, string> = {
     bitnami: "https://charts.bitnami.com/bitnami",
+    minio: "https://charts.min.io/",
     ingress_nginx: "https://kubernetes.github.io/ingress-nginx",
     "cert-manager": "https://charts.jetstack.io",
     grafana: "https://grafana.github.io/helm-charts",
@@ -68,6 +69,32 @@ async function ensureHelmRepo(chartUrl: string): Promise<void> {
       console.warn(`[worker] Failed to add repo '${repoName}':`, err);
     }
   }
+}
+
+/**
+ * Wait for pods to be ready using the best available label selector.
+ * Bitnami charts use `app.kubernetes.io/instance`, while other charts
+ * (e.g. official MinIO) use the Helm `release` label.
+ */
+async function waitForReleasePods(
+  namespace: string,
+  helmRelease: string,
+  timeoutSeconds: number
+) {
+  // Try standard Kubernetes label first
+  const standardLabel = `app.kubernetes.io/instance=${helmRelease}`;
+  const probe = await listPods(namespace, standardLabel);
+
+  if (probe.length > 0) {
+    return waitForReady(namespace, standardLabel, timeoutSeconds);
+  }
+
+  // Fall back to Helm's `release` label (used by many community charts)
+  const helmLabel = `release=${helmRelease}`;
+  console.log(
+    `[worker] No pods found with '${standardLabel}', trying '${helmLabel}'`
+  );
+  return waitForReady(namespace, helmLabel, timeoutSeconds);
 }
 
 // ─── Job handlers ─────────────────────────────────────────
@@ -138,9 +165,9 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     await job.updateProgress(70);
 
     // 4. Wait for pods to be ready
-    const { ready, pods } = await waitForReady(
+    const { ready, pods } = await waitForReleasePods(
       tenantNamespace,
-      `app.kubernetes.io/instance=${helmRelease}`,
+      helmRelease,
       120 // 2 min timeout (helm --wait already waited)
     );
 
@@ -347,9 +374,9 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     await job.updateProgress(70);
 
     // 4. Wait for pods to be ready
-    const { ready, pods } = await waitForReady(
+    const { ready, pods } = await waitForReleasePods(
       tenantNamespace,
-      `app.kubernetes.io/instance=${helmRelease}`,
+      helmRelease,
       120
     );
 
@@ -432,9 +459,9 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
   }
 
   try {
-    const { ready } = await waitForReady(
+    const { ready } = await waitForReleasePods(
       deployment.namespace,
-      `app.kubernetes.io/instance=${deployment.helmRelease}`,
+      deployment.helmRelease,
       30 // Short timeout for health checks
     );
 

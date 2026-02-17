@@ -88,7 +88,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Helm values: write to temp file (os.tmpdir + randomUUID), pass via `--values`, cleanup in `finally`.
 - **ALL chart versions use NULL (latest)** for seed recipes — pinned versions reference Docker tags that get removed. This includes Bitnami charts AND the 8gears n8n chart (jumped from 0.26.1 to 2.0.1).
 - 8gears n8n chart 2.x: `persistence` moved under `main.persistence`, `valkey` dependency added (disabled by default). Values template updated for 2.x compatibility.
-- Bitnami label: `app.kubernetes.io/instance=<releaseName>` for pod queries.
+- **Pod label selectors**: Worker and `getReleasePodStatus` try `app.kubernetes.io/instance=<releaseName>` first (Bitnami/standard), then fall back to `release=<releaseName>` (Helm convention used by community charts like official MinIO).
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
 ## BullMQ & Deployment Engine
@@ -102,10 +102,24 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Template `cluster` context: `domain`, `ingress_class`, `ingress_enabled`, `tls_cluster_issuer` — controlled by env vars `MATHISON_BASE_DOMAIN`, `INGRESS_CLASS`, `INGRESS_ENABLED`, `TLS_CLUSTER_ISSUER`.
 - **Resource config**: All recipes expose `cpu_request`, `memory_request`, `cpu_limit`, `memory_limit` in configSchema. Templates use `{{config.cpu_request}}` etc. Users can change resources via `updateService`.
 - Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release><suffix>.<namespace>.svc.cluster.local`.
-- **Bitnami service name suffixes**: postgresql → `-postgresql`, redis → `-redis-master`, mysql → `-mysql`, mongodb → `-mongodb`, minio → `-minio`. These are appended to the Helm release name for K8s service DNS.
+- **Service name suffixes**: postgresql → `-postgresql`, redis → `-redis-master`, mysql → `-mysql`, mongodb → `-mongodb`, minio → `""` (no suffix). Bitnami charts append chart name; official MinIO chart uses release name directly.
 - **Dependency credentials are flattened**: `DependencyInfo` has `host`, `port`, plus all config/secret values at top level. Templates access `{{deps.n8n-db.password}}` directly (not `{{deps.n8n-db.credentials.password}}`).
 - **Stale PVC gotcha**: When redeploying with same Helm release name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
+- **OCI Helm errors go to stdout**: OCI chart installs (`oci://`) print pull progress to stdout, then errors. The `getErrorMessage()` in `helm.ts` scans for `Error:` lines. Regular charts use stderr.
+- **Failed releases block re-install**: `helmRecoverStuckRelease()` now uninstalls `failed` releases (not just `pending-*`) so retries work.
+- **MinIO uses official chart**: Bitnami removed their MinIO Docker images from Docker Hub. Switched to official chart (`minio/minio` from `https://charts.min.io/`). Image: `quay.io/minio/minio`. Values differ from Bitnami: `rootUser`/`rootPassword` at top level (not under `auth:`), `buckets:` array (not `defaultBuckets:` string), `persistence.accessMode` singular, `consoleIngress` (not `apiIngress`).
+- **Dockerfile.dev includes helm + kubectl**: Both are installed in the Alpine image for worker to execute Helm commands inside Docker.
 - **Port-forward for local access**: `kubectl port-forward svc/<svc-name> <local-port>:<svc-port> -n <ns>` — needed for kind clusters without ingress.
+
+## One-Click Install
+
+- **Install API**: `POST /api/apps/install` with `{ recipeSlug }`. Wraps `initiateDeployment()` with auto-naming.
+- **Auto-naming**: Uses recipe slug as name. On conflict, appends `-2`, `-3`, etc. Only checks non-STOPPED deployments.
+- **useInstall hook**: Manages full flow — mutation + 3s polling. Phases: `idle` → `installing` → `polling` → `success`/`error`.
+- **Install modal**: Multi-step dialog (confirm → progress → success). Used from app cards on the store page.
+- **Detail page install**: Inline flow — InstallButton + InstallProgress + InstallSuccess replace the header area.
+- **Installed detection**: Store page + detail page fetch deployments alongside catalog data. `installedSlugs` Set passed to cards.
+- **Install count**: Incremented in `initiateDeployment()` (fire-and-forget), not in the install API route.
 
 ## Frontend Patterns
 

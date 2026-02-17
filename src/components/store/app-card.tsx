@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, Check } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 
@@ -11,6 +11,8 @@ import type { Recipe } from "@/types/recipe";
 interface AppCardProps {
   recipe: Recipe;
   variant?: "default" | "featured";
+  isInstalled?: boolean;
+  onInstall?: (recipe: Recipe) => void;
 }
 
 function formatInstallCount(count: number): string {
@@ -18,9 +20,21 @@ function formatInstallCount(count: number): string {
   return String(count);
 }
 
-export function AppCard({ recipe, variant = "default" }: AppCardProps) {
+export function AppCard({
+  recipe,
+  variant = "default",
+  isInstalled = false,
+  onInstall,
+}: AppCardProps) {
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
   const isFeatured = variant === "featured";
+
+  function handleGetClick(e: React.MouseEvent) {
+    if (isInstalled) return; // "Installed" badge doesn't trigger install
+    e.preventDefault();
+    e.stopPropagation();
+    onInstall?.(recipe);
+  }
 
   return (
     <Link href={`/catalog/${recipe.slug}`} className="block h-full group">
@@ -61,9 +75,23 @@ export function AppCard({ recipe, variant = "default" }: AppCardProps) {
 
         {/* Footer: Install Button + Count */}
         <div className="flex items-center gap-3 w-full mt-auto pt-1">
-          <span className="flex-1 inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-medium h-8 px-3 shadow-sm">
-            Get
-          </span>
+          {isInstalled ? (
+            <Link
+              href="/deployments"
+              onClick={(e) => e.stopPropagation()}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium h-8 px-3 hover:bg-green-500/5 transition-colors"
+            >
+              <Check className="size-3.5" />
+              Installed
+            </Link>
+          ) : (
+            <button
+              onClick={handleGetClick}
+              className="flex-1 inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-medium h-8 px-3 shadow-sm hover:bg-primary/90 transition-colors cursor-pointer"
+            >
+              Get
+            </button>
+          )}
           {recipe.installCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
               <Download className="size-3" />

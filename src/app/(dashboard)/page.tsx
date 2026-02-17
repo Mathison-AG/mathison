@@ -3,11 +3,14 @@
 import { useState, useCallback, useMemo } from "react";
 
 import { useCatalog } from "@/hooks/use-catalog";
+import { useDeployments } from "@/hooks/use-deployments";
+import { useInstall } from "@/hooks/use-install";
 import { StoreSearch } from "@/components/store/store-search";
 import { FeaturedApps } from "@/components/store/featured-apps";
 import { CategoryRow } from "@/components/store/category-row";
 import { CategoryFilters } from "@/components/store/category-filters";
 import { AppGrid } from "@/components/store/app-grid";
+import { InstallModal } from "@/components/store/install-modal";
 
 import type { Recipe } from "@/types/recipe";
 
@@ -24,11 +27,35 @@ const CATEGORY_ORDER = ["automation", "monitoring", "storage", "database", "anal
 export default function AppStorePage() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
   const { data: recipes, isLoading } = useCatalog(
     search || undefined,
     category !== "all" ? category : undefined
   );
+
+  const { data: deployments } = useDeployments();
+  const {
+    phase,
+    deployment: installDeployment,
+    error: installError,
+    install,
+    reset,
+  } = useInstall();
+
+  // Build set of installed recipe slugs
+  const installedSlugs = useMemo(() => {
+    const slugs = new Set<string>();
+    if (deployments) {
+      for (const d of deployments) {
+        if (d.status !== "STOPPED" && d.status !== "FAILED") {
+          slugs.add(d.recipe.slug);
+        }
+      }
+    }
+    return slugs;
+  }, [deployments]);
 
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
@@ -37,6 +64,33 @@ export default function AppStorePage() {
   const handleCategoryChange = useCallback((value: string) => {
     setCategory(value);
   }, []);
+
+  const handleInstallClick = useCallback((recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+    setModalOpen(true);
+  }, []);
+
+  const handleConfirmInstall = useCallback(() => {
+    if (selectedRecipe) {
+      install(selectedRecipe.slug);
+    }
+  }, [selectedRecipe, install]);
+
+  const handleModalClose = useCallback(
+    (open: boolean) => {
+      setModalOpen(open);
+      if (!open && (phase === "success" || phase === "idle" || phase === "error")) {
+        setSelectedRecipe(null);
+        reset();
+      }
+    },
+    [phase, reset]
+  );
+
+  const handleReset = useCallback(() => {
+    reset();
+    setSelectedRecipe(null);
+  }, [reset]);
 
   // Separate featured apps
   const featured = useMemo(
@@ -76,13 +130,24 @@ export default function AppStorePage() {
         /* Filtered view: category chips + flat grid */
         <div className="space-y-6">
           <CategoryFilters selected={category} onChange={handleCategoryChange} />
-          <AppGrid recipes={recipes ?? []} isLoading={isLoading} />
+          <AppGrid
+            recipes={recipes ?? []}
+            isLoading={isLoading}
+            installedSlugs={installedSlugs}
+            onInstall={handleInstallClick}
+          />
         </div>
       ) : (
         /* Browse view: featured + categories */
         <div className="space-y-10">
           {/* Featured */}
-          {!isLoading && <FeaturedApps recipes={featured} />}
+          {!isLoading && (
+            <FeaturedApps
+              recipes={featured}
+              installedSlugs={installedSlugs}
+              onInstall={handleInstallClick}
+            />
+          )}
 
           {/* Category rows */}
           {!isLoading &&
@@ -95,6 +160,8 @@ export default function AppStorePage() {
                   title={CATEGORY_LABELS[cat] ?? cat}
                   recipes={catRecipes}
                   onViewAll={() => handleCategoryChange(cat)}
+                  installedSlugs={installedSlugs}
+                  onInstall={handleInstallClick}
                 />
               );
             })}
@@ -110,11 +177,27 @@ export default function AppStorePage() {
                 selected={category}
                 onChange={handleCategoryChange}
               />
-              <AppGrid recipes={recipes ?? []} />
+              <AppGrid
+                recipes={recipes ?? []}
+                installedSlugs={installedSlugs}
+                onInstall={handleInstallClick}
+              />
             </section>
           )}
         </div>
       )}
+
+      {/* Install Modal */}
+      <InstallModal
+        recipe={selectedRecipe}
+        open={modalOpen}
+        onOpenChange={handleModalClose}
+        phase={phase}
+        deployment={installDeployment}
+        error={installError}
+        onConfirm={handleConfirmInstall}
+        onReset={handleReset}
+      />
     </div>
   );
 }

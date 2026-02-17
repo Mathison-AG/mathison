@@ -8,9 +8,15 @@ import type { Recipe } from "@/types/recipe";
 
 interface FeaturedAppsProps {
   recipes: Recipe[];
+  installedSlugs?: Set<string>;
+  onInstall?: (recipe: Recipe) => void;
 }
 
-export function FeaturedApps({ recipes }: FeaturedAppsProps) {
+export function FeaturedApps({
+  recipes,
+  installedSlugs,
+  onInstall,
+}: FeaturedAppsProps) {
   if (recipes.length === 0) return null;
 
   return (
@@ -21,7 +27,13 @@ export function FeaturedApps({ recipes }: FeaturedAppsProps) {
       </div>
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
         {recipes.map((recipe) => (
-          <AppCard key={recipe.id} recipe={recipe} variant="featured" />
+          <AppCard
+            key={recipe.id}
+            recipe={recipe}
+            variant="featured"
+            isInstalled={installedSlugs?.has(recipe.slug)}
+            onInstall={onInstall}
+          />
         ))}
       </div>
     </section>

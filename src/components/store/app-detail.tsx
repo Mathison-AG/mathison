@@ -10,17 +10,22 @@ import {
   CheckCircle2,
   Star,
   Globe,
+  Check,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { chatEvents } from "@/lib/events";
+import { InstallButton } from "./install-button";
+import { InstallProgress } from "./install-progress";
+import { InstallSuccess } from "./install-success";
+import { useInstall } from "@/hooks/use-install";
 
 import type { Recipe } from "@/types/recipe";
 
 interface AppDetailProps {
   recipe: Recipe;
+  isInstalled?: boolean;
 }
 
 function formatInstallCount(count: number): string {
@@ -28,12 +33,18 @@ function formatInstallCount(count: number): string {
   return String(count);
 }
 
-export function AppDetail({ recipe }: AppDetailProps) {
+export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
+  const { phase, deployment, error, install, reset } = useInstall();
+  const hasDeps = recipe.dependencies.length > 0;
 
   function handleInstall() {
-    chatEvents.openWithMessage(`Install ${recipe.displayName}`);
+    install(recipe.slug);
   }
+
+  const showProgress = phase === "installing" || phase === "polling";
+  const showSuccess = phase === "success";
+  const showInstallButton = !showProgress && !showSuccess;
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -83,13 +94,70 @@ export function AppDetail({ recipe }: AppDetailProps) {
         </div>
 
         <div className="shrink-0 flex flex-col items-end gap-2">
-          <Button onClick={handleInstall} size="lg" className="rounded-xl px-8">
-            <Download className="size-4" />
-            Install
-          </Button>
-          <span className="text-xs text-muted-foreground">Free</span>
+          {showInstallButton && (
+            <>
+              {isInstalled ? (
+                <Link href="/deployments">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="rounded-xl px-8 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/5"
+                  >
+                    <Check className="size-4" />
+                    Installed
+                  </Button>
+                </Link>
+              ) : (
+                <InstallButton
+                  phase={phase}
+                  onInstall={handleInstall}
+                  onRetry={handleInstall}
+                  size="lg"
+                  className="rounded-xl px-8"
+                />
+              )}
+              <span className="text-xs text-muted-foreground">Free</span>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 flex items-start gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-full bg-destructive/10 shrink-0">
+            <span className="text-destructive text-sm">!</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-destructive font-medium">Installation failed</p>
+            <p className="text-sm text-destructive/80 mt-0.5">{error}</p>
+            <button
+              onClick={handleInstall}
+              className="text-sm text-destructive font-medium mt-2 underline hover:no-underline"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Install progress (replaces description area when installing) */}
+      {showProgress && (
+        <InstallProgress
+          appName={recipe.displayName}
+          hasDeps={hasDeps}
+          deployment={deployment}
+        />
+      )}
+
+      {/* Install success */}
+      {showSuccess && (
+        <InstallSuccess
+          appName={recipe.displayName}
+          appUrl={deployment?.url ?? null}
+          gettingStarted={recipe.gettingStarted}
+        />
+      )}
 
       {/* Description */}
       <div className="space-y-2">

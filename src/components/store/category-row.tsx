@@ -10,9 +10,17 @@ interface CategoryRowProps {
   title: string;
   recipes: Recipe[];
   onViewAll?: () => void;
+  installedSlugs?: Set<string>;
+  onInstall?: (recipe: Recipe) => void;
 }
 
-export function CategoryRow({ title, recipes, onViewAll }: CategoryRowProps) {
+export function CategoryRow({
+  title,
+  recipes,
+  onViewAll,
+  installedSlugs,
+  onInstall,
+}: CategoryRowProps) {
   if (recipes.length === 0) return null;
 
   return (
@@ -31,7 +39,12 @@ export function CategoryRow({ title, recipes, onViewAll }: CategoryRowProps) {
       </div>
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {recipes.map((recipe) => (
-          <AppCard key={recipe.id} recipe={recipe} />
+          <AppCard
+            key={recipe.id}
+            recipe={recipe}
+            isInstalled={installedSlugs?.has(recipe.slug)}
+            onInstall={onInstall}
+          />
         ))}
       </div>
     </section>

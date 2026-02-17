@@ -36,6 +36,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │       ├── auth/            # NextAuth + signup
 │   │       ├── catalog/         # Public: recipes list, detail, search
 │   │       ├── chat/            # AI agent streaming endpoint
+│   │       ├── apps/            # One-click install endpoint
 │   │       ├── deployments/     # CRUD + logs (workspace-scoped)
 │   │       ├── workspaces/      # Workspace CRUD + switch
 │   │       └── stack/           # Canvas data (nodes + edges)
@@ -43,6 +44,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   ├── components/
 │   │   ├── canvas/              # React Flow: stack-canvas, service-node, dependency-edge
 │   │   ├── catalog/             # Recipe cards, grid, filters, detail
+│   │   ├── store/               # App Store: cards, grid, featured, install flow (modal, progress, success)
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
 │   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer
 │   │   ├── layout/              # Dashboard shell, sidebar (workspace selector), header, chat panel
@@ -65,7 +67,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── events.ts            # Cross-component event emitter (chat ↔ UI)
 │   │   └── utils.ts             # cn() and shared utilities
 │   │
-│   ├── hooks/                   # React hooks: useCanvasData, useCatalog, useDeployments
+│   ├── hooks/                   # React hooks: useCanvasData, useCatalog, useDeployments, useInstall
 │   ├── types/                   # Shared TypeScript types
 │   ├── generated/prisma/        # Generated Prisma client (don't edit)
 │   └── middleware.ts            # Auth middleware (Edge runtime)
@@ -143,6 +145,7 @@ ai-k8s/                          # Workspace root = Next.js app
 | `/api/catalog` | GET | Public | List recipes (with filters) |
 | `/api/catalog/[slug]` | GET | Public | Recipe detail |
 | `/api/catalog/search` | POST | Public | Semantic search (pgvector) |
+| `/api/apps/install` | POST | Protected | One-click install (wraps deployment engine) |
 | `/api/chat` | POST | Protected | AI agent streaming (workspace-scoped) |
 | `/api/deployments` | GET | Protected | List deployments in active workspace |
 | `/api/deployments/[id]` | GET, DELETE | Protected | Deployment detail / remove |

@@ -1,9 +1,10 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 
 import { useRecipe } from "@/hooks/use-catalog";
+import { useDeployments } from "@/hooks/use-deployments";
 import { AppDetail } from "@/components/store/app-detail";
 
 interface AppPageProps {
@@ -13,6 +14,17 @@ interface AppPageProps {
 export default function AppPage({ params }: AppPageProps) {
   const { slug } = use(params);
   const { data: recipe, isLoading, error } = useRecipe(slug);
+  const { data: deployments } = useDeployments();
+
+  const isInstalled = useMemo(() => {
+    if (!deployments || !recipe) return false;
+    return deployments.some(
+      (d) =>
+        d.recipe.slug === recipe.slug &&
+        d.status !== "STOPPED" &&
+        d.status !== "FAILED"
+    );
+  }, [deployments, recipe]);
 
   if (isLoading) {
     return (
@@ -37,7 +49,7 @@ export default function AppPage({ params }: AppPageProps) {
 
   return (
     <div className="p-6">
-      <AppDetail recipe={recipe} />
+      <AppDetail recipe={recipe} isInstalled={isInstalled} />
     </div>
   );
 }
