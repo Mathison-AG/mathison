@@ -1,27 +1,24 @@
 /**
- * Deployment Engine
+ * Deployment Engine V2
  *
  * Core orchestration for deploying, upgrading, and removing services.
- * Called by agent tools — coordinates recipe lookup, dependency resolution,
- * secret generation, template rendering, and job queuing.
+ * Uses the typed recipe system: validates config via Zod, calls build()
+ * to produce K8s resource objects, and applies them via Server-Side Apply.
  *
  * Deployments are scoped to a workspace (which maps to a K8s namespace).
  */
 
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { getRecipe, incrementInstallCount } from "@/lib/catalog/service";
-import { generateSecrets, createK8sSecret, readK8sSecret } from "./secrets";
-import {
-  renderValuesTemplate,
-  buildTemplateContext,
-} from "./template";
+import { incrementInstallCount } from "@/lib/catalog/service";
+import { requireRecipeDefinition } from "@/recipes/registry";
+import { generateSecretsFromDefinition, readK8sSecret } from "./secrets";
 import { resolveDependencies, resolveExistingDependencies } from "./dependencies";
 import { deploymentQueue } from "@/lib/queue/queues";
 import { JOB_NAMES } from "@/lib/queue/jobs";
 
 import type { DeployJobData, UndeployJobData, UpgradeJobData } from "@/lib/queue/jobs";
-import type { ConfigSchema, RecipeDependency } from "@/types/recipe";
+import type { RecipeDefinition, BuildContext, IngressContext, KubernetesResource } from "@/recipes/_base/types";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -45,11 +42,27 @@ interface RemoveResult {
   message: string;
 }
 
+// ─── Ingress Context Builder ──────────────────────────────
+
+function buildIngressContext(): IngressContext | undefined {
+  const domain = process.env.MATHISON_BASE_DOMAIN;
+  if (!domain || process.env.INGRESS_ENABLED !== "true") {
+    return undefined;
+  }
+  return {
+    domain,
+    tlsEnabled: process.env.TLS_ENABLED === "true",
+    ingressClass: process.env.INGRESS_CLASS || "nginx",
+    tlsClusterIssuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod",
+  };
+}
+
 // ─── Deploy ───────────────────────────────────────────────
 
 /**
- * Initiate a new deployment: lookup recipe, resolve deps, generate secrets,
- * render values, create DB record, and queue the Helm install job.
+ * Initiate a new deployment: lookup recipe from registry, validate config
+ * via Zod, resolve deps, generate secrets, call build(), create DB record,
+ * and queue the SSA apply job.
  */
 export async function initiateDeployment(params: {
   tenantId: string;
@@ -60,11 +73,8 @@ export async function initiateDeployment(params: {
 }): Promise<DeployResult> {
   const { tenantId, workspaceId, recipeSlug, config = {} } = params;
 
-  // 1. Look up recipe
-  const recipe = await getRecipe(recipeSlug);
-  if (!recipe) {
-    throw new Error(`Recipe '${recipeSlug}' not found in catalog`);
-  }
+  // 1. Look up recipe from typed registry
+  const recipe = requireRecipeDefinition(recipeSlug);
 
   // 2. Get workspace info (includes namespace)
   const workspace = await prisma.workspace.findFirst({
@@ -75,9 +85,7 @@ export async function initiateDeployment(params: {
     throw new Error("Workspace not found");
   }
 
-  const tenantSlug = workspace.tenant.slug;
   const deploymentName = params.name || recipe.slug;
-  const helmRelease = `${workspace.slug}-${deploymentName}`;
 
   // 3. Check for duplicate within workspace
   const existing = await prisma.deployment.findUnique({
@@ -91,7 +99,14 @@ export async function initiateDeployment(params: {
     );
   }
 
-  // 4. Resolve dependencies (within workspace)
+  // 4. Validate config via Zod schema (fills defaults for missing fields)
+  const parsed = recipe.configSchema.safeParse(config);
+  if (!parsed.success) {
+    throw new Error(`Invalid configuration: ${String(parsed.error)}`);
+  }
+  const validatedConfig = parsed.data as Record<string, unknown>;
+
+  // 5. Resolve dependencies (within workspace)
   const { resolved: depInfo, newDeploymentIds } = await resolveDependencies({
     tenantId,
     workspaceId,
@@ -100,63 +115,52 @@ export async function initiateDeployment(params: {
     recipe,
   });
 
-  // 5. Generate secrets
-  const secrets = generateSecrets(recipe.secretsSchema);
+  // 6. Generate secrets from recipe definition
+  const secrets = generateSecretsFromDefinition(recipe.secrets);
 
-  // Store secrets in K8s
-  const secretsRef =
-    Object.keys(secrets).length > 0
-      ? `secret-${workspace.slug}-${deploymentName}`
-      : null;
-
-  if (secretsRef && Object.keys(secrets).length > 0) {
-    try {
-      await createK8sSecret(workspace.namespace, secretsRef, secrets);
-    } catch (err) {
-      console.error(`[engine] Failed to create K8s secret for '${deploymentName}':`, err);
-      // Continue — secrets are also in the rendered values
-    }
-  }
-
-  // 6. Render values template
-  const configDefaults = extractConfigDefaults(recipe.configSchema);
-  const context = buildTemplateContext({
-    config,
-    configDefaults,
+  // 7. Build K8s resources
+  const buildCtx: BuildContext<unknown> = {
+    config: validatedConfig,
     secrets,
     deps: depInfo,
-    tenantSlug,
-    tenantNamespace: workspace.namespace,
+    name: deploymentName,
+    namespace: workspace.namespace,
+    ingress: buildIngressContext(),
+  };
+
+  const resources = recipe.build(buildCtx);
+  const serializedResources = JSON.stringify(resources);
+
+  // 8. Find the DB recipe record for linking
+  const dbRecipe = await prisma.recipe.findFirst({
+    where: { slug: recipeSlug },
+    select: { id: true, version: true },
   });
 
-  const renderedValues = renderValuesTemplate(recipe.valuesTemplate, context);
-
-  // 7. Create Deployment record
+  // 9. Create Deployment record
   const deployment = await prisma.deployment.create({
     data: {
       tenantId,
       workspaceId,
-      recipeId: recipe.id,
-      recipeVersion: recipe.version,
+      recipeId: dbRecipe?.id ?? "",
+      recipeVersion: dbRecipe?.version ?? 1,
       name: deploymentName,
       namespace: workspace.namespace,
-      helmRelease,
-      config: config as unknown as Prisma.InputJsonValue,
-      secretsRef,
+      helmRelease: `${workspace.slug}-${deploymentName}`,
+      config: validatedConfig as unknown as Prisma.InputJsonValue,
+      secretsRef: null, // Secrets are now part of the build() output
+      managedResources: serializedResources,
       status: "PENDING",
       dependsOn: newDeploymentIds,
     },
   });
 
-  // 8. Queue deploy job
+  // 10. Queue deploy job
   const jobData: DeployJobData = {
     deploymentId: deployment.id,
-    recipeSlug: recipe.slug,
-    helmRelease,
-    chartUrl: recipe.chartUrl,
-    chartVersion: recipe.chartVersion ?? undefined,
-    tenantNamespace: workspace.namespace,
-    renderedValues,
+    recipeSlug,
+    namespace: workspace.namespace,
+    resources: serializedResources,
   };
 
   await deploymentQueue.add(JOB_NAMES.DEPLOY, jobData, {
@@ -164,7 +168,9 @@ export async function initiateDeployment(params: {
   });
 
   // Increment install count (fire-and-forget)
-  incrementInstallCount(recipe.id);
+  if (dbRecipe) {
+    incrementInstallCount(dbRecipe.id);
+  }
 
   const depMsg =
     newDeploymentIds.length > 0
@@ -188,7 +194,7 @@ export async function initiateDeployment(params: {
 
 /**
  * Upgrade an existing deployment with new configuration.
- * Properly resolves existing dependencies and reuses secrets from K8s.
+ * Validates new config, merges with existing, rebuilds resources, queues job.
  */
 export async function initiateUpgrade(params: {
   tenantId: string;
@@ -205,19 +211,12 @@ export async function initiateUpgrade(params: {
           id: true,
           slug: true,
           namespace: true,
-          tenant: { select: { slug: true } },
         },
       },
       recipe: {
         select: {
           slug: true,
           displayName: true,
-          chartUrl: true,
-          chartVersion: true,
-          configSchema: true,
-          secretsSchema: true,
-          valuesTemplate: true,
-          dependencies: true,
         },
       },
     },
@@ -227,60 +226,54 @@ export async function initiateUpgrade(params: {
     throw new Error("Deployment not found");
   }
 
-  const tenantSlug = deployment.workspace.tenant.slug;
+  // Get recipe from typed registry
+  const recipe = requireRecipeDefinition(deployment.recipe.slug);
 
   // Merge configs (new values override existing)
   const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
   const mergedConfig = { ...existingConfig, ...config };
 
-  // Reuse existing secrets from K8s — don't regenerate passwords/keys
-  const secretsSchema = deployment.recipe.secretsSchema as Record<
-    string,
-    { generate?: boolean; length?: number; description?: string }
-  >;
-  let existingSecrets: Record<string, string> = {};
-  if (deployment.secretsRef) {
-    existingSecrets = await readK8sSecret(
-      deployment.workspace.namespace,
-      deployment.secretsRef
-    );
+  // Validate merged config via Zod
+  const parsed = recipe.configSchema.safeParse(mergedConfig);
+  if (!parsed.success) {
+    throw new Error(`Invalid configuration: ${String(parsed.error)}`);
   }
-  const secrets = generateSecrets(secretsSchema, existingSecrets);
+  const validatedConfig = parsed.data as Record<string, unknown>;
 
-  // Re-resolve existing dependencies so template placeholders render correctly
-  const recipeDeps = (deployment.recipe.dependencies ?? []) as unknown as RecipeDependency[];
-  const deps = await resolveExistingDependencies({
+  // Reuse existing secrets — read from the K8s Secret resources in the cluster
+  const existingSecrets = await readExistingSecrets(
+    deployment.namespace,
+    deployment.name,
+    recipe
+  );
+  const secrets = generateSecretsFromDefinition(recipe.secrets, existingSecrets);
+
+  // Re-resolve existing dependencies
+  const depInfo = await resolveExistingDependencies({
     workspaceId: deployment.workspace.id,
     workspaceNamespace: deployment.workspace.namespace,
-    dependencies: recipeDeps,
+    recipe,
   });
 
-  // Render new values with full context
-  const configDefaults = extractConfigDefaults(
-    deployment.recipe.configSchema as Record<
-      string,
-      { type: string; default?: unknown }
-    >
-  );
-  const context = buildTemplateContext({
-    config: mergedConfig,
-    configDefaults,
+  // Rebuild K8s resources with new config
+  const buildCtx: BuildContext<unknown> = {
+    config: validatedConfig,
     secrets,
-    deps,
-    tenantSlug,
-    tenantNamespace: deployment.workspace.namespace,
-  });
+    deps: depInfo,
+    name: deployment.name,
+    namespace: deployment.namespace,
+    ingress: buildIngressContext(),
+  };
 
-  const renderedValues = renderValuesTemplate(
-    deployment.recipe.valuesTemplate as string,
-    context
-  );
+  const resources = recipe.build(buildCtx);
+  const serializedResources = JSON.stringify(resources);
 
   // Update DB
   await prisma.deployment.update({
     where: { id: deploymentId },
     data: {
-      config: mergedConfig as unknown as Prisma.InputJsonValue,
+      config: validatedConfig as unknown as Prisma.InputJsonValue,
+      managedResources: serializedResources,
       status: "DEPLOYING",
     },
   });
@@ -288,11 +281,9 @@ export async function initiateUpgrade(params: {
   // Queue upgrade job
   const jobData: UpgradeJobData = {
     deploymentId,
-    helmRelease: deployment.helmRelease,
-    chartUrl: deployment.recipe.chartUrl,
-    chartVersion: deployment.recipe.chartVersion ?? undefined,
-    tenantNamespace: deployment.workspace.namespace,
-    renderedValues,
+    recipeSlug: deployment.recipe.slug,
+    namespace: deployment.namespace,
+    resources: serializedResources,
   };
 
   await deploymentQueue.add(JOB_NAMES.UPGRADE, jobData, {
@@ -313,7 +304,7 @@ export async function initiateUpgrade(params: {
 // ─── Remove ───────────────────────────────────────────────
 
 /**
- * Remove a deployment: check dependents, update status, queue undeploy job.
+ * Remove a deployment: check dependents, read managed resources, queue delete job.
  */
 export async function initiateRemoval(params: {
   tenantId: string;
@@ -323,13 +314,8 @@ export async function initiateRemoval(params: {
 
   const deployment = await prisma.deployment.findFirst({
     where: { id: deploymentId, tenantId },
-    select: {
-      id: true,
-      name: true,
-      helmRelease: true,
-      namespace: true,
-      workspaceId: true,
-      recipe: { select: { displayName: true } },
+    include: {
+      recipe: { select: { slug: true, displayName: true } },
     },
   });
 
@@ -354,6 +340,24 @@ export async function initiateRemoval(params: {
     );
   }
 
+  // Get resources to delete — either from DB or rebuild from recipe
+  let serializedResources: string;
+  if (deployment.managedResources) {
+    serializedResources = deployment.managedResources;
+  } else {
+    // Fallback: rebuild resources for deletion
+    const recipe = requireRecipeDefinition(deployment.recipe.slug);
+    const buildCtx: BuildContext<unknown> = {
+      config: recipe.configSchema.parse({}),
+      secrets: {},
+      deps: {},
+      name: deployment.name,
+      namespace: deployment.namespace,
+    };
+    const resources = recipe.build(buildCtx);
+    serializedResources = JSON.stringify(resources);
+  }
+
   // Update status
   await prisma.deployment.update({
     where: { id: deploymentId },
@@ -363,8 +367,8 @@ export async function initiateRemoval(params: {
   // Queue undeploy job
   const jobData: UndeployJobData = {
     deploymentId,
-    helmRelease: deployment.helmRelease,
-    tenantNamespace: deployment.namespace,
+    namespace: deployment.namespace,
+    resources: serializedResources,
   };
 
   await deploymentQueue.add(JOB_NAMES.UNDEPLOY, jobData, {
@@ -382,21 +386,85 @@ export async function initiateRemoval(params: {
 
 // ─── Helpers ──────────────────────────────────────────────
 
-function extractConfigDefaults(
-  configSchema: ConfigSchema | Record<string, unknown>
-): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
+/**
+ * Read existing secrets from K8s for a deployment.
+ * Looks for the Secret resource that the recipe build() would have created.
+ */
+async function readExistingSecrets(
+  namespace: string,
+  deploymentName: string,
+  recipe: RecipeDefinition<unknown>
+): Promise<Record<string, string>> {
+  // Try to read the secret that build() creates (typically `{name}-secret`)
+  const possibleNames = [
+    `${deploymentName}-secret`,
+    `${deploymentName}-secrets`,
+    deploymentName,
+  ];
 
-  for (const [key, field] of Object.entries(configSchema)) {
-    if (
-      typeof field === "object" &&
-      field !== null &&
-      "default" in field &&
-      (field as { default?: unknown }).default !== undefined
-    ) {
-      defaults[key] = (field as { default: unknown }).default;
+  for (const secretName of possibleNames) {
+    const secrets = await readK8sSecret(namespace, secretName);
+    if (Object.keys(secrets).length > 0) {
+      return secrets;
     }
   }
 
-  return defaults;
+  // Also check if there are any secrets defined in the recipe
+  if (Object.keys(recipe.secrets).length === 0) {
+    return {};
+  }
+
+  return {};
+}
+
+/**
+ * Helper to extract service info from built resources for port-forwarding.
+ * Finds the primary Service resource in the build output.
+ */
+export function extractServiceInfo(
+  resources: KubernetesResource[]
+): { serviceName: string; servicePort: number } | null {
+  for (const resource of resources) {
+    if (resource.kind === "Service") {
+      const name = resource.metadata?.name;
+      const spec = (resource as { spec?: { clusterIP?: string; ports?: Array<{ port?: number }> } }).spec;
+
+      // Skip headless services
+      if (spec?.clusterIP === "None") continue;
+
+      const port = spec?.ports?.[0]?.port;
+      if (name && port) {
+        return { serviceName: name, servicePort: port };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Helper to extract pod labels from built resources.
+ * Reads from the first Deployment or StatefulSet in the resource list.
+ */
+export function extractPodSelector(
+  resources: KubernetesResource[]
+): string | null {
+  for (const resource of resources) {
+    if (resource.kind === "Deployment" || resource.kind === "StatefulSet") {
+      const spec = resource as {
+        spec?: {
+          selector?: {
+            matchLabels?: Record<string, string>;
+          };
+        };
+      };
+
+      const labels = spec.spec?.selector?.matchLabels;
+      if (labels) {
+        return Object.entries(labels)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(",");
+      }
+    }
+  }
+  return null;
 }

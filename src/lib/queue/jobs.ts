@@ -2,6 +2,7 @@
  * BullMQ Job Type Definitions
  *
  * Shared types between the API (producer) and worker (consumer).
+ * V2: Uses serialized K8s resources instead of Helm values YAML.
  */
 
 // ─── Deployment jobs ──────────────────────────────────────
@@ -9,26 +10,24 @@
 export interface DeployJobData {
   deploymentId: string;
   recipeSlug: string;
-  helmRelease: string;
-  chartUrl: string;
-  chartVersion?: string;
-  tenantNamespace: string;
-  renderedValues: string; // YAML string
+  namespace: string;
+  /** JSON-serialized KubernetesResource[] from recipe build() */
+  resources: string;
 }
 
 export interface UndeployJobData {
   deploymentId: string;
-  helmRelease: string;
-  tenantNamespace: string;
+  namespace: string;
+  /** JSON-serialized KubernetesResource[] — resources to delete */
+  resources: string;
 }
 
 export interface UpgradeJobData {
   deploymentId: string;
-  helmRelease: string;
-  chartUrl: string;
-  chartVersion?: string;
-  tenantNamespace: string;
-  renderedValues: string; // YAML string
+  recipeSlug: string;
+  namespace: string;
+  /** JSON-serialized KubernetesResource[] from recipe build() */
+  resources: string;
 }
 
 // ─── Embedding jobs ───────────────────────────────────────

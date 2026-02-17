@@ -330,6 +330,7 @@ export interface ServiceSpec {
     targetPort: number;
     protocol?: string;
   }>;
+  /** Service type. Use "None" for headless services (sets clusterIP: None) */
   type?: string;
   component?: string;
   extraLabels?: Record<string, string>;
@@ -339,6 +340,7 @@ export interface ServiceSpec {
 
 /**
  * Build a V1Service with standard labels.
+ * If type is "None", creates a headless service (type: ClusterIP, clusterIP: None).
  */
 export function service(
   name: string,
@@ -350,6 +352,9 @@ export function service(
     ...spec.extraLabels,
   };
 
+  // Headless service: type=None means ClusterIP with clusterIP=None
+  const isHeadless = spec.type === "None";
+
   return {
     apiVersion: "v1",
     kind: "Service",
@@ -359,7 +364,8 @@ export function service(
       labels,
     },
     spec: {
-      type: spec.type ?? "ClusterIP",
+      type: isHeadless ? "ClusterIP" : (spec.type ?? "ClusterIP"),
+      clusterIP: isHeadless ? "None" : undefined,
       selector:
         spec.selector ?? matchLabels(spec.appName, name),
       ports: spec.ports.map((p) => ({

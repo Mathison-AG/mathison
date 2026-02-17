@@ -44,6 +44,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Postgres port 5433**: Another project occupies 5432. All DATABASE_URL references use 5433.
 - **Zod v4 import**: `import { z } from "zod/v4"` — the v4 subpath export. `z.record()` needs 2 args. Error flattening: `z.flattenError(parsed.error)`.
 - **Next.js 16 lint**: Uses `eslint .` directly, not `next lint` (which errors in 16.x).
+- **Helm no longer used for deployments**: Engine V2 uses Server-Side Apply (SSA). Helm CLI still exists in the codebase (kept for cleanup in Step 22) but the worker no longer calls it.
 - **execa removed**: Helm wrapper uses `child_process.execFile` (promisified). execa v9 is ESM-only and breaks tsx CJS mode.
 - **ioredis removed**: BullMQ bundles its own. Top-level ioredis caused version conflicts.
 - **Worker runs outside Next.js**: Must use bootstrap pattern (`index.ts` loads env via dotenv, then dynamic-imports `main.ts`). Static ES imports hoist above dotenv.config().
@@ -122,7 +123,10 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release><suffix>.<namespace>.svc.cluster.local`.
 - **Service name suffixes**: postgresql → `-postgresql`, redis → `-redis-master`, mysql → `-mysql`, mongodb → `-mongodb`, minio → `""` (no suffix). Bitnami charts append chart name; official MinIO chart uses release name directly.
 - **Dependency credentials are flattened**: `DependencyInfo` has `host`, `port`, plus all config/secret values at top level. Templates access `{{deps.n8n-db.password}}` directly (not `{{deps.n8n-db.credentials.password}}`).
-- **Stale PVC gotcha**: When redeploying with same Helm release name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
+- **Bitnami image tags**: Use `latest` — Bitnami doesn't publish short version tags like `7` or `16` on Docker Hub. Only full tags like `7.4.2-debian-12-r2` and `latest`.
+- **Headless service builder**: Use `type: "None"` in ServiceSpec — builder translates to `type: "ClusterIP"` + `clusterIP: "None"`. Don't set `clusterIP` directly in SSA patches.
+- **managedResources on Deployment**: JSON-serialized K8s resources stored in DB for undeploy. Engine stores them at deploy time, worker reads them for delete.
+- **Stale PVC gotcha**: When redeploying with same name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
 - **OCI Helm errors go to stdout**: OCI chart installs (`oci://`) print pull progress to stdout, then errors. The `getErrorMessage()` in `helm.ts` scans for `Error:` lines. Regular charts use stderr.
 - **Failed releases block re-install**: `helmRecoverStuckRelease()` now uninstalls `failed` releases (not just `pending-*`) so retries work.
 - **MinIO uses official chart**: Bitnami removed their MinIO Docker images from Docker Hub. Switched to official chart (`minio/minio` from `https://charts.min.io/`). Image: `quay.io/minio/minio`. Values differ from Bitnami: `rootUser`/`rootPassword` at top level (not under `auth:`), `buckets:` array (not `defaultBuckets:` string), `persistence.accessMode` singular, `consoleIngress` (not `apiIngress`).

@@ -72,7 +72,7 @@ PostgreSQL supports standard SQL, JSON data, full-text search, and much more.`,
   },
 
   image: "docker.io/bitnami/postgresql",
-  imageTag: (config) => config.version,
+  imageTag: () => "latest",
   containerPort: 5432,
   portName: "postgresql",
 

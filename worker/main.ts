@@ -1,9 +1,9 @@
 /**
- * Mathison BullMQ Worker — Main Logic
+ * Mathison BullMQ Worker — Main Logic (V2)
  *
  * Separate process that consumes deployment jobs from the queue.
- * Executes Helm operations, monitors pod readiness, and updates DB status.
- * Manages port-forwarding for local/kind clusters.
+ * Uses Server-Side Apply to manage K8s resources instead of Helm.
+ * Monitors pod readiness and manages port-forwarding for local access.
  *
  * Imported dynamically by index.ts AFTER env vars are loaded.
  */
@@ -11,15 +11,8 @@
 import { Worker, Job } from "bullmq";
 import { connection } from "../src/lib/queue/connection";
 import { JOB_NAMES } from "../src/lib/queue/jobs";
-import {
-  helmInstall,
-  helmUpgrade,
-  helmUninstall,
-  helmRecoverStuckRelease,
-  addRepo
-} from "../src/lib/cluster/helm";
-import { waitForReady, listPods, getIngressUrl } from "../src/lib/cluster/kubernetes";
-import { deleteK8sSecret } from "../src/lib/deployer/secrets";
+import { applyResources, deleteResources } from "../src/recipes/_base/apply";
+import { waitForReady } from "../src/lib/cluster/kubernetes";
 import { assignPort } from "../src/lib/cluster/port-manager";
 import {
   startPortForward,
@@ -33,124 +26,90 @@ import type {
   DeployJobData,
   UndeployJobData,
   UpgradeJobData,
-  HealthCheckJobData
+  HealthCheckJobData,
 } from "../src/lib/queue/jobs";
+import type { KubernetesResource } from "../src/recipes/_base/types";
 
-// ─── Helm repo cache ──────────────────────────────────────
-
-/** Track which repos we've already added this session */
-const addedRepos = new Set<string>();
+// ─── Resource helpers ─────────────────────────────────────
 
 /**
- * Ensure the Helm repo for a chart URL is configured.
- * OCI registries (oci://) don't need repo add.
+ * Deserialize K8s resources from JSON string.
  */
-async function ensureHelmRepo(chartUrl: string): Promise<void> {
-  // OCI charts don't need repo setup
-  if (chartUrl.startsWith("oci://")) {
-    return;
-  }
-
-  // Extract repo name from chart reference (e.g., "bitnami/postgresql" → "bitnami")
-  const parts = chartUrl.split("/");
-  if (parts.length < 2) return;
-
-  const repoName = parts[0] ?? "";
-  if (!repoName || addedRepos.has(repoName)) return;
-
-  // Known repos
-  const KNOWN_REPOS: Record<string, string> = {
-    bitnami: "https://charts.bitnami.com/bitnami",
-    minio: "https://charts.min.io/",
-    ingress_nginx: "https://kubernetes.github.io/ingress-nginx",
-    "cert-manager": "https://charts.jetstack.io",
-    grafana: "https://grafana.github.io/helm-charts",
-    prometheus: "https://prometheus-community.github.io/helm-charts"
-  };
-
-  if (repoName in KNOWN_REPOS) {
-    const repoUrl = KNOWN_REPOS[repoName] as string;
-    try {
-      await addRepo(repoName, repoUrl);
-      addedRepos.add(repoName);
-    } catch (err) {
-      console.warn(`[worker] Failed to add repo '${repoName}':`, err);
-    }
-  }
+function parseResources(json: string): KubernetesResource[] {
+  return JSON.parse(json) as KubernetesResource[];
 }
 
 /**
- * Wait for pods to be ready using the best available label selector.
- * Bitnami charts use `app.kubernetes.io/instance`, while other charts
- * (e.g. official MinIO) use the Helm `release` label.
+ * Extract the pod label selector from the first Deployment or StatefulSet.
+ * Returns a comma-separated label selector string for K8s API.
  */
-async function waitForReleasePods(
-  namespace: string,
-  helmRelease: string,
-  timeoutSeconds: number
-) {
-  // Try standard Kubernetes label first
-  const standardLabel = `app.kubernetes.io/instance=${helmRelease}`;
-  const probe = await listPods(namespace, standardLabel);
+function extractPodSelector(resources: KubernetesResource[]): string | null {
+  for (const resource of resources) {
+    if (resource.kind === "Deployment" || resource.kind === "StatefulSet") {
+      const spec = resource as {
+        spec?: {
+          selector?: {
+            matchLabels?: Record<string, string>;
+          };
+        };
+      };
 
-  if (probe.length > 0) {
-    return waitForReady(namespace, standardLabel, timeoutSeconds);
+      const labels = spec.spec?.selector?.matchLabels;
+      if (labels) {
+        return Object.entries(labels)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(",");
+      }
+    }
   }
+  return null;
+}
 
-  // Fall back to Helm's `release` label (used by many community charts)
-  const helmLabel = `release=${helmRelease}`;
-  console.log(
-    `[worker] No pods found with '${standardLabel}', trying '${helmLabel}'`
-  );
-  return waitForReady(namespace, helmLabel, timeoutSeconds);
+/**
+ * Extract the primary service info (name + port) from the resource list.
+ * Skips headless services (clusterIP: None).
+ */
+function extractServiceInfo(
+  resources: KubernetesResource[]
+): { serviceName: string; servicePort: number } | null {
+  for (const resource of resources) {
+    if (resource.kind === "Service") {
+      const name = resource.metadata?.name;
+      const spec = (resource as {
+        spec?: {
+          clusterIP?: string;
+          ports?: Array<{ port?: number }>;
+        };
+      }).spec;
+
+      // Skip headless services
+      if (spec?.clusterIP === "None") continue;
+
+      const port = spec?.ports?.[0]?.port;
+      if (name && port) {
+        return { serviceName: name, servicePort: port };
+      }
+    }
+  }
+  return null;
 }
 
 // ─── Service discovery ────────────────────────────────────
 
 /**
- * Discover the primary K8s service for a deployment and set up port-forwarding.
- * Looks up the recipe's ingress config to find the service name suffix and port,
- * then assigns a local port and starts a port-forward.
+ * Discover the primary K8s service from built resources and set up port-forwarding.
  */
 async function setupPortForward(
   deploymentId: string,
-  helmRelease: string,
-  namespace: string
+  namespace: string,
+  resources: KubernetesResource[]
 ): Promise<string | null> {
   try {
-    // Look up the recipe info for service discovery
-    const deployment = await prisma.deployment.findUnique({
-      where: { id: deploymentId },
-      select: {
-        recipe: {
-          select: {
-            ingressConfig: true,
-            healthCheck: true,
-          },
-        },
-      },
-    });
-
-    if (!deployment) return null;
-
-    const ingressConfig = deployment.recipe.ingressConfig as {
-      port?: number;
-      serviceNameSuffix?: string;
-    } | null;
-    const healthCheck = deployment.recipe.healthCheck as {
-      port?: number;
-    } | null;
-
-    // Determine the service port (prefer ingressConfig.port, fall back to healthCheck.port)
-    const servicePort = ingressConfig?.port || healthCheck?.port;
-    if (!servicePort) {
-      console.warn(`[worker] No service port found for deployment ${deploymentId}`);
+    const svcInfo = extractServiceInfo(resources);
+    if (!svcInfo) {
+      console.warn(`[worker] No service found in resources for deployment ${deploymentId}`);
       return null;
     }
-
-    // Determine the service name
-    const suffix = ingressConfig?.serviceNameSuffix ?? "";
-    const serviceName = `${helmRelease}${suffix}`;
 
     // Assign a local port
     const localPort = await assignPort(deploymentId);
@@ -159,8 +118,8 @@ async function setupPortForward(
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: {
-        serviceName,
-        servicePort,
+        serviceName: svcInfo.serviceName,
+        servicePort: svcInfo.servicePort,
       },
     });
 
@@ -168,8 +127,8 @@ async function setupPortForward(
     const { url } = await startPortForward({
       deploymentId,
       namespace,
-      serviceName,
-      servicePort,
+      serviceName: svcInfo.serviceName,
+      servicePort: svcInfo.servicePort,
       localPort,
     });
 
@@ -186,29 +145,17 @@ async function setupPortForward(
 // ─── Job handlers ─────────────────────────────────────────
 
 async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
-  const {
-    deploymentId,
-    recipeSlug,
-    helmRelease,
-    chartUrl,
-    chartVersion,
-    tenantNamespace,
-    renderedValues
-  } = job.data;
+  const { deploymentId, recipeSlug, namespace, resources: resourcesJson } = job.data;
 
-  console.log(
-    `[worker] Deploy: ${helmRelease} (${recipeSlug}) → ${tenantNamespace}`
-  );
+  console.log(`[worker] Deploy: ${recipeSlug} → ${namespace}`);
 
-  // Check if deployment record still exists (may have been deleted by undeploy)
+  // Check if deployment record still exists
   const exists = await prisma.deployment.findUnique({
     where: { id: deploymentId },
-    select: { id: true }
+    select: { id: true },
   });
   if (!exists) {
-    console.warn(
-      `[worker] Deploy skipped: deployment ${deploymentId} no longer exists in DB`
-    );
+    console.warn(`[worker] Deploy skipped: deployment ${deploymentId} no longer exists in DB`);
     return;
   }
 
@@ -216,83 +163,54 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     // 1. Update status → DEPLOYING
     await prisma.deployment.update({
       where: { id: deploymentId },
-      data: { status: "DEPLOYING", errorMessage: null }
+      data: { status: "DEPLOYING", errorMessage: null },
     });
     await job.updateProgress(10);
 
-    // 2. Ensure Helm repo is configured
-    await ensureHelmRepo(chartUrl);
-    await job.updateProgress(15);
-
-    // 2.5. Recover stuck release if one exists (e.g. from a previously interrupted deploy)
-    const recovery = await helmRecoverStuckRelease(helmRelease, tenantNamespace);
-    if (recovery.recovered) {
-      console.log(
-        `[worker] Recovered stuck release ${helmRelease}: ${recovery.action}`
-      );
-    }
+    // 2. Parse resources
+    const resources = parseResources(resourcesJson);
     await job.updateProgress(20);
 
-    // 3. Run helm install
-    const result = await helmInstall({
-      releaseName: helmRelease,
-      chart: chartUrl,
-      namespace: tenantNamespace,
-      valuesYaml: renderedValues || undefined,
-      version: chartVersion,
-      wait: true,
-      timeout: "5m",
-      createNamespace: false // Namespace already created during tenant provisioning
-    });
+    // 3. Apply resources via Server-Side Apply
+    const results = await applyResources(resources);
+    const errors = results.filter((r) => r.error);
+    if (errors.length > 0) {
+      const errorMsg = errors.map((e) => `${e.resource}: ${e.error}`).join("; ");
+      throw new Error(`Failed to apply resources: ${errorMsg}`);
+    }
 
-    console.log(
-      `[worker] Helm install completed: ${result.name} → ${result.status}`
-    );
-    await job.updateProgress(70);
+    console.log(`[worker] SSA applied ${results.length} resources for ${recipeSlug}`);
+    await job.updateProgress(60);
 
     // 4. Wait for pods to be ready
-    const { ready, pods } = await waitForReleasePods(
-      tenantNamespace,
-      helmRelease,
-      120 // 2 min timeout (helm --wait already waited)
-    );
+    const podSelector = extractPodSelector(resources);
+    let ready = false;
+    let pods: Array<{ name: string; status: string }> = [];
+
+    if (podSelector) {
+      const result = await waitForReady(namespace, podSelector, 180);
+      ready = result.ready;
+      pods = result.pods;
+    } else {
+      console.warn(`[worker] No pod selector found — skipping readiness wait`);
+      ready = true;
+    }
 
     await job.updateProgress(90);
 
-    // 5. Get ingress URL if applicable
-    let url: string | null = null;
-    try {
-      url = await getIngressUrl(tenantNamespace, helmRelease);
-    } catch {
-      // No ingress — fine
-    }
-
-    // 6. Update status → RUNNING (or FAILED if pods aren't ready)
-    // Include chart/app version and revision from Helm result
-    const versionData = {
-      chartVersion: result.chart !== "unknown" ? result.chart : null,
-      appVersion: result.appVersion !== "unknown" ? result.appVersion : null,
-      revision: parseInt(result.revision, 10) || 1,
-    };
-
     if (ready) {
-      // 7. Set up port-forwarding for local access
-      const portForwardUrl = await setupPortForward(
-        deploymentId,
-        helmRelease,
-        tenantNamespace
-      );
+      // 5. Set up port-forwarding for local access
+      const portForwardUrl = await setupPortForward(deploymentId, namespace, resources);
 
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
-          url: portForwardUrl || url,
+          url: portForwardUrl,
           errorMessage: null,
-          ...versionData,
-        }
+        },
       });
-      console.log(`[worker] Deploy SUCCESS: ${helmRelease} is RUNNING (chart: ${versionData.chartVersion}, app: ${versionData.appVersion})`);
+      console.log(`[worker] Deploy SUCCESS: ${recipeSlug} is RUNNING`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
       await prisma.deployment.update({
@@ -300,53 +218,50 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
         data: {
           status: "FAILED",
           errorMessage: `Service deployed but not yet healthy: ${podStatuses}`,
-          ...versionData,
-        }
+        },
       });
-      console.warn(
-        `[worker] Deploy PARTIAL: ${helmRelease} installed but pods not ready`
-      );
+      console.warn(`[worker] Deploy PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
 
     await job.updateProgress(100);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[worker] Deploy FAILED: ${helmRelease}:`, errorMessage);
+    console.error(`[worker] Deploy FAILED: ${recipeSlug}:`, errorMessage);
 
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: {
         status: "FAILED",
-        errorMessage: errorMessage.slice(0, 1000) // Truncate for DB
-      }
+        errorMessage: errorMessage.slice(0, 1000),
+      },
     });
 
-    throw err; // Let BullMQ handle retry
+    throw err;
   }
 }
 
 async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
-  const { deploymentId, helmRelease, tenantNamespace } = job.data;
+  const { deploymentId, namespace, resources: resourcesJson } = job.data;
 
-  console.log(`[worker] Undeploy: ${helmRelease} from ${tenantNamespace}`);
+  console.log(`[worker] Undeploy: deployment ${deploymentId} from ${namespace}`);
 
   // Stop port-forward before anything else
   await stopPortForward(deploymentId);
 
-  // Check if deployment record still exists (idempotent — may have been deleted already)
+  // Check if deployment record still exists
   const exists = await prisma.deployment.findUnique({
     where: { id: deploymentId },
-    select: { id: true }
+    select: { id: true },
   });
   if (!exists) {
     console.warn(
-      `[worker] Undeploy: deployment ${deploymentId} already gone from DB — attempting Helm cleanup only`
+      `[worker] Undeploy: deployment ${deploymentId} already gone from DB — attempting resource cleanup only`
     );
-    // Still try to uninstall the Helm release in case it's orphaned
     try {
-      await helmUninstall(helmRelease, tenantNamespace);
+      const resources = parseResources(resourcesJson);
+      await deleteResources(resources);
     } catch {
-      // Ignore — release may not exist either
+      // Ignore — resources may not exist either
     }
     return;
   }
@@ -355,49 +270,35 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
     // 1. Update status → DELETING
     await prisma.deployment.update({
       where: { id: deploymentId },
-      data: { status: "DELETING" }
+      data: { status: "DELETING" },
     });
     await job.updateProgress(10);
 
-    // 2. Run helm uninstall
-    await helmUninstall(helmRelease, tenantNamespace);
-    await job.updateProgress(60);
+    // 2. Delete K8s resources
+    const resources = parseResources(resourcesJson);
+    const results = await deleteResources(resources);
 
-    // 3. Clean up K8s secrets
-    const deployment = await prisma.deployment.findUnique({
-      where: { id: deploymentId },
-      select: { secretsRef: true }
-    });
+    const deleted = results.filter((r) => r.deleted).length;
+    console.log(`[worker] Deleted ${deleted}/${results.length} K8s resources`);
+    await job.updateProgress(70);
 
-    if (deployment?.secretsRef) {
-      try {
-        await deleteK8sSecret(tenantNamespace, deployment.secretsRef);
-      } catch (err) {
-        console.warn(
-          `[worker] Failed to cleanup secret for ${helmRelease}:`,
-          err
-        );
-      }
-    }
-    await job.updateProgress(80);
-
-    // 4. Delete the deployment record — resource no longer exists in the cluster
+    // 3. Delete the deployment record
     await prisma.deployment.delete({
       where: { id: deploymentId },
     });
 
-    console.log(`[worker] Undeploy SUCCESS: ${helmRelease} removed (record deleted)`);
+    console.log(`[worker] Undeploy SUCCESS: deployment ${deploymentId} removed (record deleted)`);
     await job.updateProgress(100);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[worker] Undeploy FAILED: ${helmRelease}:`, errorMessage);
+    console.error(`[worker] Undeploy FAILED: ${deploymentId}:`, errorMessage);
 
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: {
         status: "FAILED",
-        errorMessage: `Undeploy failed: ${errorMessage.slice(0, 1000)}`
-      }
+        errorMessage: `Undeploy failed: ${errorMessage.slice(0, 1000)}`,
+      },
     });
 
     throw err;
@@ -405,26 +306,17 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
 }
 
 async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
-  const {
-    deploymentId,
-    helmRelease,
-    chartUrl,
-    chartVersion,
-    tenantNamespace,
-    renderedValues
-  } = job.data;
+  const { deploymentId, recipeSlug, namespace, resources: resourcesJson } = job.data;
 
-  console.log(`[worker] Upgrade: ${helmRelease} in ${tenantNamespace}`);
+  console.log(`[worker] Upgrade: ${recipeSlug} in ${namespace}`);
 
-  // Check if deployment record still exists (may have been deleted by undeploy)
+  // Check if deployment record still exists
   const exists = await prisma.deployment.findUnique({
     where: { id: deploymentId },
-    select: { id: true }
+    select: { id: true },
   });
   if (!exists) {
-    console.warn(
-      `[worker] Upgrade skipped: deployment ${deploymentId} no longer exists in DB`
-    );
+    console.warn(`[worker] Upgrade skipped: deployment ${deploymentId} no longer exists in DB`);
     return;
   }
 
@@ -435,85 +327,50 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     // 1. Update status → DEPLOYING
     await prisma.deployment.update({
       where: { id: deploymentId },
-      data: { status: "DEPLOYING", errorMessage: null }
+      data: { status: "DEPLOYING", errorMessage: null },
     });
     await job.updateProgress(10);
 
-    // 2. Ensure Helm repo
-    await ensureHelmRepo(chartUrl);
-    await job.updateProgress(15);
-
-    // 2.5. Recover stuck release if one exists (e.g. from a previously interrupted upgrade)
-    const recovery = await helmRecoverStuckRelease(helmRelease, tenantNamespace);
-    if (recovery.recovered) {
-      console.log(
-        `[worker] Recovered stuck release ${helmRelease}: ${recovery.action}`
-      );
+    // 2. Parse and apply resources (SSA handles the diff)
+    const resources = parseResources(resourcesJson);
+    const results = await applyResources(resources);
+    const errors = results.filter((r) => r.error);
+    if (errors.length > 0) {
+      const errorMsg = errors.map((e) => `${e.resource}: ${e.error}`).join("; ");
+      throw new Error(`Failed to apply resources: ${errorMsg}`);
     }
-    await job.updateProgress(20);
 
-    // 3. Run helm upgrade (or install if recovery uninstalled the release)
-    const useInstall = recovery.action === "uninstalled";
-    const helmOp = useInstall ? helmInstall : helmUpgrade;
-    const result = await helmOp({
-      releaseName: helmRelease,
-      chart: chartUrl,
-      namespace: tenantNamespace,
-      valuesYaml: renderedValues || undefined,
-      version: chartVersion,
-      wait: true,
-      timeout: "5m",
-      createNamespace: false,
-    });
+    console.log(`[worker] SSA applied ${results.length} resources for ${recipeSlug} upgrade`);
+    await job.updateProgress(60);
 
-    const opLabel = useInstall ? "install (after recovery)" : "upgrade";
-    console.log(
-      `[worker] Helm ${opLabel} completed: ${result.name} → ${result.status}`
-    );
-    await job.updateProgress(70);
+    // 3. Wait for pods to be ready
+    const podSelector = extractPodSelector(resources);
+    let ready = false;
+    let pods: Array<{ name: string; status: string }> = [];
 
-    // 4. Wait for pods to be ready
-    const { ready, pods } = await waitForReleasePods(
-      tenantNamespace,
-      helmRelease,
-      120
-    );
+    if (podSelector) {
+      const result = await waitForReady(namespace, podSelector, 180);
+      ready = result.ready;
+      pods = result.pods;
+    } else {
+      ready = true;
+    }
 
     await job.updateProgress(90);
 
-    // 5. Get ingress URL
-    let url: string | null = null;
-    try {
-      url = await getIngressUrl(tenantNamespace, helmRelease);
-    } catch {
-      // No ingress
-    }
-
-    // 6. Update status + version info from Helm result
-    const versionData = {
-      chartVersion: result.chart !== "unknown" ? result.chart : null,
-      appVersion: result.appVersion !== "unknown" ? result.appVersion : null,
-      revision: parseInt(result.revision, 10) || 1,
-    };
-
     if (ready) {
-      // 7. Re-establish port-forwarding
-      const portForwardUrl = await setupPortForward(
-        deploymentId,
-        helmRelease,
-        tenantNamespace
-      );
+      // 4. Re-establish port-forwarding
+      const portForwardUrl = await setupPortForward(deploymentId, namespace, resources);
 
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
-          url: portForwardUrl || url,
+          url: portForwardUrl,
           errorMessage: null,
-          ...versionData,
-        }
+        },
       });
-      console.log(`[worker] Upgrade SUCCESS: ${helmRelease} is RUNNING (chart: ${versionData.chartVersion}, app: ${versionData.appVersion})`);
+      console.log(`[worker] Upgrade SUCCESS: ${recipeSlug} is RUNNING`);
     } else {
       const podStatuses = pods.map((p) => `${p.name}: ${p.status}`).join(", ");
       await prisma.deployment.update({
@@ -521,25 +378,22 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
         data: {
           status: "FAILED",
           errorMessage: `Service updated but not yet healthy: ${podStatuses}`,
-          ...versionData,
-        }
+        },
       });
-      console.warn(
-        `[worker] Upgrade PARTIAL: ${helmRelease} upgraded but pods not ready`
-      );
+      console.warn(`[worker] Upgrade PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
 
     await job.updateProgress(100);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error(`[worker] Upgrade FAILED: ${helmRelease}:`, errorMessage);
+    console.error(`[worker] Upgrade FAILED: ${recipeSlug}:`, errorMessage);
 
     await prisma.deployment.update({
       where: { id: deploymentId },
       data: {
         status: "FAILED",
-        errorMessage: errorMessage.slice(0, 1000)
-      }
+        errorMessage: errorMessage.slice(0, 1000),
+      },
     });
 
     throw err;
@@ -553,41 +407,48 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
     where: { id: deploymentId },
     select: {
       id: true,
-      helmRelease: true,
       namespace: true,
       status: true,
-      name: true
-    }
+      name: true,
+      managedResources: true,
+    },
   });
 
   if (!deployment || deployment.status !== "RUNNING") {
-    return; // Skip health check for non-running deployments
+    return;
   }
 
   try {
-    const { ready } = await waitForReleasePods(
+    // Get pod selector from managed resources
+    let podSelector: string | null = null;
+    if (deployment.managedResources) {
+      const resources = parseResources(deployment.managedResources as string);
+      podSelector = extractPodSelector(resources);
+    }
+
+    if (!podSelector) {
+      // Fallback: use standard labels
+      podSelector = `app.kubernetes.io/instance=${deployment.name},app.kubernetes.io/managed-by=mathison`;
+    }
+
+    const { ready } = await waitForReady(
       deployment.namespace,
-      deployment.helmRelease,
-      30 // Short timeout for health checks
+      podSelector,
+      30
     );
 
     if (!ready) {
-      console.warn(
-        `[worker] Health check: ${deployment.helmRelease} is degraded`
-      );
+      console.warn(`[worker] Health check: ${deployment.name} is degraded`);
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "FAILED",
-          errorMessage: "Health check failed: service is not responding"
-        }
+          errorMessage: "Health check failed: service is not responding",
+        },
       });
     }
   } catch (err) {
-    console.error(
-      `[worker] Health check error for ${deployment.helmRelease}:`,
-      err
-    );
+    console.error(`[worker] Health check error for ${deployment.name}:`, err);
   }
 }
 
@@ -614,7 +475,7 @@ async function checkPortForwards(): Promise<void> {
         serviceName: true,
         servicePort: true,
         namespace: true,
-        helmRelease: true,
+        name: true,
       },
     });
 
@@ -677,11 +538,11 @@ export function startWorker(): void {
     },
     {
       connection,
-      concurrency: 2, // Process up to 2 jobs in parallel
+      concurrency: 2,
       limiter: {
         max: 5,
-        duration: 60_000 // Max 5 jobs per minute
-      }
+        duration: 60_000,
+      },
     }
   );
 
@@ -726,9 +587,10 @@ export function startWorker(): void {
   // ─── Startup ──────────────────────────────────────────────
 
   console.log("═══════════════════════════════════════════════");
-  console.log(" Mathison Worker started");
+  console.log(" Mathison Worker started (V2 — Server-Side Apply)");
   console.log(` Queue: deployments`);
   console.log(` Concurrency: 2`);
+  console.log(` Engine: SSA (no Helm)`);
   console.log(` Port-forward check: every 60s`);
   console.log(
     ` DATABASE_URL: ${process.env.DATABASE_URL ? "✓ set" : "✗ MISSING"}`

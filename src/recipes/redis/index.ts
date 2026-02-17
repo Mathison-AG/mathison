@@ -69,7 +69,7 @@ Redis is ready to use as soon as it's installed. It stores data in memory for ul
   },
 
   image: "docker.io/bitnami/redis",
-  imageTag: (config) => `${config.version}.0`,
+  imageTag: () => "latest",
   containerPort: 6379,
   portName: "redis",
 

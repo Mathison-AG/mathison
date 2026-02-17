@@ -204,6 +204,7 @@ model Deployment {
   chartVersion  String?          @map("chart_version")  // e.g. "postgresql-16.2.5"
   appVersion    String?          @map("app_version")    // e.g. "16.2.0"
   revision      Int              @default(1)            // Helm revision number
+  managedResources String?        @map("managed_resources") // JSON-serialized K8s resources
   errorMessage  String?          @map("error_message")
   dependsOn     String[]         @map("depends_on") // Deployment IDs
   createdAt     DateTime         @default(now()) @map("created_at")
