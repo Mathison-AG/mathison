@@ -9,6 +9,7 @@ import {
   Store,
   AppWindow,
   Settings,
+  Server,
   ChevronsLeft,
   ChevronsRight,
   LogOut,
@@ -43,6 +44,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 const navItems = [
   { href: "/", label: "App Store", icon: Store },
   { href: "/apps", label: "My Apps", icon: AppWindow },
+  { href: "/infrastructure", label: "Infrastructure", icon: Server },
   { href: "/settings", label: "Settings", icon: Settings }
 ] as const;
 

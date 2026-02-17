@@ -638,6 +638,153 @@ export async function getReleaseResources(
   }
 }
 
+// ─── Cluster stats ────────────────────────────────────────
+
+export interface ClusterStats {
+  metricsAvailable: boolean;
+  summary: {
+    nodeCount: number;
+    totalCpuMillis: number;
+    totalMemoryBytes: number;
+    allocatedCpuMillis: number;
+    allocatedMemoryBytes: number;
+    usedCpuMillis: number | null;
+    usedMemoryBytes: number | null;
+    totalPods: number;
+    podCapacity: number;
+  };
+  nodes: ClusterNodeStats[];
+}
+
+export interface ClusterNodeStats {
+  name: string;
+  ready: boolean;
+  conditions: { type: string; status: string }[];
+  capacity: { cpuMillis: number; memoryBytes: number; pods: number };
+  allocatable: { cpuMillis: number; memoryBytes: number; pods: number };
+  allocated: { cpuMillis: number; memoryBytes: number; pods: number };
+  usage: { cpuMillis: number; memoryBytes: number } | null;
+  podCount: number;
+  kubeletVersion: string;
+  osImage: string;
+  architecture: string;
+  containerRuntime: string;
+}
+
+/**
+ * Get cluster-wide stats: node info, capacity, allocated/used resources, pod distribution.
+ * Metrics Server is optional — if unavailable, usage fields are null.
+ */
+export async function getClusterStats(): Promise<ClusterStats> {
+  const api = getCoreApi();
+
+  const [nodesRes, podsRes] = await Promise.all([
+    api.listNode(),
+    api.listPodForAllNamespaces(),
+  ]);
+
+  const nodes = nodesRes.items ?? [];
+  const allPods = podsRes.items ?? [];
+
+  // Try to get real-time metrics (requires Metrics Server)
+  let metricsAvailable = false;
+  const nodeMetricsMap = new Map<string, { cpuMillis: number; memoryBytes: number }>();
+
+  try {
+    const metricsClient = new k8s.Metrics(getKubeConfig());
+    const nodeMetrics = await metricsClient.getNodeMetrics();
+    metricsAvailable = true;
+
+    for (const nm of nodeMetrics.items) {
+      nodeMetricsMap.set(nm.metadata.name, {
+        cpuMillis: parseCpuQuantity(nm.usage.cpu),
+        memoryBytes: parseMemoryQuantity(nm.usage.memory),
+      });
+    }
+  } catch {
+    // Metrics Server not installed — graceful degradation
+  }
+
+  // Build per-node pod allocation
+  const podsByNode = new Map<string, { count: number; cpuMillis: number; memoryBytes: number }>();
+
+  for (const pod of allPods) {
+    if (pod.status?.phase === "Succeeded" || pod.status?.phase === "Failed") continue;
+    const nodeName = pod.spec?.nodeName;
+    if (!nodeName) continue;
+
+    const entry = podsByNode.get(nodeName) ?? { count: 0, cpuMillis: 0, memoryBytes: 0 };
+    entry.count++;
+
+    for (const container of pod.spec?.containers ?? []) {
+      entry.cpuMillis += parseCpuQuantity(container.resources?.requests?.["cpu"] ?? "0");
+      entry.memoryBytes += parseMemoryQuantity(container.resources?.requests?.["memory"] ?? "0");
+    }
+
+    podsByNode.set(nodeName, entry);
+  }
+
+  // Build per-node stats
+  const nodeStatsList: ClusterNodeStats[] = nodes.map((node) => {
+    const name = node.metadata?.name ?? "unknown";
+    const conditions = (node.status?.conditions ?? []).map((c) => ({
+      type: c.type ?? "Unknown",
+      status: c.status ?? "Unknown",
+    }));
+    const ready = conditions.some((c) => c.type === "Ready" && c.status === "True");
+    const capacity = node.status?.capacity ?? {};
+    const allocatable = node.status?.allocatable ?? {};
+    const podAlloc = podsByNode.get(name) ?? { count: 0, cpuMillis: 0, memoryBytes: 0 };
+    const info = node.status?.nodeInfo;
+
+    return {
+      name,
+      ready,
+      conditions,
+      capacity: {
+        cpuMillis: parseCpuQuantity(capacity["cpu"] ?? "0"),
+        memoryBytes: parseMemoryQuantity(capacity["memory"] ?? "0"),
+        pods: parseInt(capacity["pods"] ?? "0", 10),
+      },
+      allocatable: {
+        cpuMillis: parseCpuQuantity(allocatable["cpu"] ?? "0"),
+        memoryBytes: parseMemoryQuantity(allocatable["memory"] ?? "0"),
+        pods: parseInt(allocatable["pods"] ?? "0", 10),
+      },
+      allocated: {
+        cpuMillis: podAlloc.cpuMillis,
+        memoryBytes: podAlloc.memoryBytes,
+        pods: podAlloc.count,
+      },
+      usage: metricsAvailable ? (nodeMetricsMap.get(name) ?? null) : null,
+      podCount: podAlloc.count,
+      kubeletVersion: info?.kubeletVersion ?? "unknown",
+      osImage: info?.osImage ?? "unknown",
+      architecture: info?.architecture ?? "unknown",
+      containerRuntime: info?.containerRuntimeVersion ?? "unknown",
+    };
+  });
+
+  // Aggregate summary
+  const summary = {
+    nodeCount: nodeStatsList.length,
+    totalCpuMillis: nodeStatsList.reduce((sum, n) => sum + n.allocatable.cpuMillis, 0),
+    totalMemoryBytes: nodeStatsList.reduce((sum, n) => sum + n.allocatable.memoryBytes, 0),
+    allocatedCpuMillis: nodeStatsList.reduce((sum, n) => sum + n.allocated.cpuMillis, 0),
+    allocatedMemoryBytes: nodeStatsList.reduce((sum, n) => sum + n.allocated.memoryBytes, 0),
+    usedCpuMillis: metricsAvailable
+      ? nodeStatsList.reduce((sum, n) => sum + (n.usage?.cpuMillis ?? 0), 0)
+      : null,
+    usedMemoryBytes: metricsAvailable
+      ? nodeStatsList.reduce((sum, n) => sum + (n.usage?.memoryBytes ?? 0), 0)
+      : null,
+    totalPods: nodeStatsList.reduce((sum, n) => sum + n.podCount, 0),
+    podCapacity: nodeStatsList.reduce((sum, n) => sum + n.allocatable.pods, 0),
+  };
+
+  return { metricsAvailable, summary, nodes: nodeStatsList };
+}
+
 // ─── Helpers ──────────────────────────────────────────────
 
 interface K8sApiError {
@@ -669,6 +816,46 @@ function wrapK8sError(operation: string, err: unknown): Error {
 
   console.error(`[k8s] ${operation} failed:`, err);
   return new Error(`[k8s:${operation}] Unknown error`);
+}
+
+/** Parse a K8s CPU quantity string to millicores */
+function parseCpuQuantity(quantity: string): number {
+  if (!quantity) return 0;
+  if (quantity.endsWith("n")) {
+    return Math.round(parseInt(quantity, 10) / 1_000_000);
+  }
+  if (quantity.endsWith("u")) {
+    return Math.round(parseInt(quantity, 10) / 1_000);
+  }
+  if (quantity.endsWith("m")) {
+    return parseInt(quantity, 10);
+  }
+  return Math.round(parseFloat(quantity) * 1000);
+}
+
+/** Parse a K8s memory quantity string to bytes */
+function parseMemoryQuantity(quantity: string): number {
+  if (!quantity) return 0;
+  const suffixes: [string, number][] = [
+    ["Ei", 1024 ** 6],
+    ["Pi", 1024 ** 5],
+    ["Ti", 1024 ** 4],
+    ["Gi", 1024 ** 3],
+    ["Mi", 1024 ** 2],
+    ["Ki", 1024],
+    ["E", 1e18],
+    ["P", 1e15],
+    ["T", 1e12],
+    ["G", 1e9],
+    ["M", 1e6],
+    ["k", 1e3],
+  ];
+  for (const [suffix, multiplier] of suffixes) {
+    if (quantity.endsWith(suffix)) {
+      return Math.round(parseFloat(quantity.slice(0, -suffix.length)) * multiplier);
+    }
+  }
+  return Math.round(parseFloat(quantity));
 }
 
 function podToPodInfo(pod: k8s.V1Pod): PodInfo {
