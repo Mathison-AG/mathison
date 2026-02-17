@@ -10,6 +10,11 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 
 ---
 
+## Task Management
+
+- **Review before archive**: When a task is finished, present clear testing instructions to the user (what to check, URLs to visit, things to verify). Do NOT move the task to `.cursor/archive/tasks/` until the user explicitly approves.
+- **Completed tasks go to archive**: After user approval, move the task file from `.cursor/tasks/` to `.cursor/archive/tasks/`.
+
 ## Development Environment
 
 - **Docker-first**: All services run via `docker compose -f docker-compose.local.yml up`. No need to install Node.js/yarn on the host.
