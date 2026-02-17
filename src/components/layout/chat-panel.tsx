@@ -18,21 +18,26 @@ import { chatEvents } from "@/lib/events";
 
 // ─── Outer wrapper with provider ─────────────────────────
 
-export function ChatPanel() {
+interface ChatPanelProps {
+  userName?: string | null;
+}
+
+export function ChatPanel({ userName }: ChatPanelProps) {
   return (
     <ChatProvider>
-      <ChatPanelInner />
+      <ChatPanelInner userName={userName} />
     </ChatProvider>
   );
 }
 
 // ─── Inner panel (has access to ChatContext) ─────────────
 
-function ChatPanelInner() {
+function ChatPanelInner({ userName }: { userName?: string | null }) {
   const [open, setOpen] = useState(false);
   const { messages, sendMessage } = useChatContext();
 
   const isEmpty = messages.length === 0;
+  const firstName = userName?.split(" ")[0] ?? null;
 
   // Listen for "open chat with message" events from other components
   useEffect(() => {
@@ -98,9 +103,11 @@ function ChatPanelInner() {
                   <Bot className="size-6 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="font-medium">Chat with Mathison</p>
+                  <p className="font-medium">
+                    Hi{firstName ? ` ${firstName}` : ""}! I&apos;m Mathison
+                  </p>
                   <p className="text-sm text-muted-foreground">
-                    Deploy services, check status, or manage your apps.
+                    I can help you find and set up apps — or fix anything that&apos;s not working right. Try asking me something like:
                   </p>
                 </div>
               </div>

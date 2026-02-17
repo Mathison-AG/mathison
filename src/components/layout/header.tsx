@@ -17,9 +17,11 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 const pageLabels: Record<string, string> = {
-  "/": "Dashboard",
-  "/catalog": "Service Catalog",
-  "/deployments": "Deployments",
+  "/": "App Store",
+  "/catalog": "App Store",
+  "/apps": "My Apps",
+  "/deployments": "My Apps",
+  "/profile": "Profile",
   "/settings": "Settings",
 };
 
@@ -97,7 +99,7 @@ export function Header({
             </div>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <a href="/settings" className="cursor-pointer">
+              <a href="/profile" className="cursor-pointer">
                 <User className="mr-2 size-4" />
                 Profile
               </a>

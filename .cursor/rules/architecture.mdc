@@ -16,11 +16,11 @@ User (browser)
 Chat Panel (useChat + AI SDK v6)
   ↓ POST /api/chat
 AI Agent (streamText + tools)
-  ↓ tool calls (deployService, searchCatalog, etc.)
+  ↓ tool calls (installApp, uninstallApp, etc.)
 Deployment Engine (src/lib/deployer/engine.ts)
-  ↓ BullMQ job
+  ↓ recipe.build() → BullMQ job (serialized K8s resources)
 Worker (worker/main.ts)
-  ↓ Helm install/upgrade/uninstall
+  ↓ Server-Side Apply (applyResources / deleteResources)
 Kind Cluster (Kubernetes)
 ```
 
@@ -30,31 +30,46 @@ Kind Cluster (Kubernetes)
 ai-k8s/                          # Workspace root = Next.js app
 ├── src/
 │   ├── app/                     # Next.js App Router
-│   │   ├── (auth)/              # Login + signup pages
-│   │   ├── (dashboard)/         # Protected pages (/, /catalog, /deployments, /settings)
+│   │   ├── (auth)/              # Login + signup pages (split-screen layout)
+│   │   ├── (onboarding)/       # Welcome/first-run flow (minimal layout, auth required)
+│   │   ├── (dashboard)/         # Protected pages (/, /catalog, /apps, /deployments→redirect, /settings)
 │   │   └── api/                 # API routes
 │   │       ├── auth/            # NextAuth + signup
 │   │       ├── catalog/         # Public: recipes list, detail, search
 │   │       ├── chat/            # AI agent streaming endpoint
+│   │       ├── apps/            # One-click install endpoint
 │   │       ├── deployments/     # CRUD + logs (workspace-scoped)
-│   │       ├── workspaces/      # Workspace CRUD + switch
+│   │       ├── onboarding/      # Mark onboarding complete
+│   │       ├── workspaces/      # Workspace CRUD + switch + export/import
 │   │       └── stack/           # Canvas data (nodes + edges)
 │   │
 │   ├── components/
 │   │   ├── canvas/              # React Flow: stack-canvas, service-node, dependency-edge
 │   │   ├── catalog/             # Recipe cards, grid, filters, detail
+│   │   ├── store/               # App Store: cards, grid, featured, install flow (modal, progress, success)
+│   │   ├── onboarding/          # Welcome categories, first-install celebration
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
-│   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer
+│   │   ├── my-apps/             # My Apps: app-card, app-grid, app-detail, open-button, connection-info, remove-dialog, status-indicator
+│   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer (legacy)
 │   │   ├── layout/              # Dashboard shell, sidebar (workspace selector), header, chat panel
 │   │   ├── settings/            # Workspace manager component
 │   │   ├── ui/                  # shadcn/ui primitives (button, card, sheet, etc.)
 │   │   └── providers.tsx        # Client providers (theme, query, tooltip)
 │   │
+│   ├── recipes/                 # Typed recipe system (replaces Helm values templates)
+│   │   ├── _base/               # Foundation: types, builders, archetypes, SSA apply
+│   │   ├── postgresql/          # database() archetype
+│   │   ├── redis/               # cache() archetype
+│   │   ├── uptime-kuma/         # webApp() archetype
+│   │   ├── minio/               # objectStore() archetype
+│   │   ├── n8n/                 # Custom build() (dependency wiring, worker mode)
+│   │   └── registry.ts          # getRecipeDefinition(), listRecipeDefinitions()
+│   │
 │   ├── lib/
-│   │   ├── agent/               # AI: provider factory, system prompt, 10 tools
-│   │   ├── catalog/             # Recipes: CRUD service, embeddings, seed data
-│   │   ├── cluster/             # K8s client, Helm CLI wrapper, ingress
-│   │   ├── deployer/            # Engine, dependency resolution, secrets, templates
+│   │   ├── agent/               # AI: provider factory, system prompt, tools
+│   │   ├── catalog/             # Catalog service (registry + DB), metadata helper, embeddings
+│   │   ├── cluster/             # K8s client, ingress
+│   │   ├── deployer/            # Engine, dependency resolution, secrets
 │   │   ├── queue/               # BullMQ connection, queue definitions, job types
 │   │   ├── tenant/              # Tenant-level operations, quota management
 │   │   ├── workspace/           # Workspace CRUD, K8s provisioning, active context
@@ -65,7 +80,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── events.ts            # Cross-component event emitter (chat ↔ UI)
 │   │   └── utils.ts             # cn() and shared utilities
 │   │
-│   ├── hooks/                   # React hooks: useCanvasData, useCatalog, useDeployments
+│   ├── hooks/                   # React hooks: useCanvasData, useCatalog, useDeployments, useInstall
 │   ├── types/                   # Shared TypeScript types
 │   ├── generated/prisma/        # Generated Prisma client (don't edit)
 │   └── middleware.ts            # Auth middleware (Edge runtime)
@@ -90,24 +105,31 @@ ai-k8s/                          # Workspace root = Next.js app
 ### AI Agent (`src/lib/agent/`)
 - **provider.ts** — LLM factory: Anthropic (primary), Ollama (fallback). Returns LanguageModelV3.
 - **system-prompt.ts** — Instructions for the agent. Cloud-first language, no K8s terminology. Workspace-aware.
-- **tools.ts** — 13 tools. Workspace tools: `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. Deployment tools (workspace-scoped): `deployService`, `getStackStatus`, `getServiceDetail`, `getServiceLogs`, `updateService`, `removeService`. Catalog tools: `searchCatalog`, `getRecipe`, `createRecipe`, `searchHelmCharts`. Called via `getTools(tenantId, workspaceId)`.
+- **tools.ts** — 17 consumer-facing tools. Workspace tools (hidden): `listWorkspaces`, `createWorkspace`, `deleteWorkspace`. App tools (workspace-scoped): `installApp`, `listMyApps`, `getAppStatus`, `getAppHistory`, `diagnoseApp`, `changeAppSettings`, `uninstallApp`. Catalog tools: `findApps`, `getAppInfo`. Preview: `previewChanges`. Backup/Restore: `backupWorkspace`, `restoreWorkspace`. Data: `exportAppData`, `importAppData`. Called via `getTools(tenantId, workspaceId)`. All results formatted for consumer context (no pods, namespaces, or config keys).
 
-### Deployment Engine (`src/lib/deployer/`)
-- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Deployments are workspace-scoped. Engine takes `workspaceId` for deploy, looks up workspace namespace.
-- **dependencies.ts** — `resolveDependencies()`. Auto-deploys missing dependencies within the same workspace with priority jobs.
-- **secrets.ts** — `generateSecrets()`. Uses `crypto.randomBytes()` for strong secrets.
-- **template.ts** — Handlebars rendering. Merges config defaults from recipe's configSchema.
+### Deployment Engine V2 (`src/lib/deployer/`)
+- **engine.ts** — `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()`. Uses recipe registry (not DB) for recipe lookup. Validates config via Zod, calls `build()` for K8s resources, queues SSA apply jobs. Records audit events. No more Helm.
+- **events.ts** — Append-only audit trail. `recordCreated()`, `recordConfigChanged()`, `recordRestarted()`, `recordStatusChanged()`, `recordHealthChanged()`, `recordFailed()`, `recordRemoved()`. Fire-and-forget.
+- **dependencies.ts** — `resolveDependencies()`. Uses recipe `connectionInfo()` for typed connection data. Auto-deploys missing dependencies via SSA.
+- **secrets.ts** — `generateSecretsFromDefinition()` (typed) + legacy `generateSecrets()`. Uses `crypto.randomBytes()` for strong secrets.
+- **data-export.ts** — `exportDeploymentData()`, `importDeploymentData()`. Per-recipe data portability via kubectl exec. Two strategies: command (pg_dump, redis-cli) and files (tar). Also: `getDataPortabilityInfo()` for API/UI.
 
 ### Cluster Integration (`src/lib/cluster/`)
 - **kubernetes.ts** — KubeConfig, namespace CRUD, pod status/logs, resource queries.
-- **helm.ts** — Helm CLI wrapper via `child_process.execFile`. Install, upgrade, uninstall, status.
 - **ingress.ts** — Ingress rule management.
+- **port-manager.ts** — DB-backed local port assignment (range 10000–10999) for port-forwarding.
+- **port-forward.ts** — kubectl port-forward child process management. Tracks PIDs, auto-restart on death.
+- **pod-exec.ts** — `execInPod()` (text), `execInPodStream()` (streaming), `execInPodWithStdin()` (pipe input). Uses kubectl exec CLI.
 
-### Background Worker (`worker/`)
+### Background Worker V2 (`worker/`)
 - Runs as separate process: `yarn worker` (= `tsx watch worker/index.ts`).
 - Processes BullMQ jobs from the `"deployments"` queue.
 - Job types: deploy, undeploy, upgrade, health_check.
+- **Engine**: Server-Side Apply — `applyResources()` for deploy/upgrade, `deleteResources()` for undeploy. No Helm binary needed.
+- **Pod monitoring**: Extracts pod selector from built resources (deterministic labels from builders).
+- **Service discovery**: Extracts service name/port from build output (no more hardcoded suffixes).
 - Bootstrap pattern: `index.ts` loads dotenv first, then dynamic-imports `main.ts`.
+- **Port-forwarding**: Auto-starts port-forwards on RUNNING, stops on undeploy/upgrade. Health check loop every 60s restarts dead forwards. Graceful shutdown stops all forwards.
 
 ### Frontend Data Flow
 - **TanStack Query** for all client data fetching. Query keys: `["catalog"]`, `["deployments"]`, `["stack"]`.
@@ -127,9 +149,9 @@ ai-k8s/                          # Workspace root = Next.js app
 | Tenant | Multi-tenancy root. Has slug. Owns workspaces. |
 | User | Auth. Belongs to Tenant. Has role (ADMIN/USER), activeWorkspaceId. |
 | Workspace | Isolated environment. Belongs to Tenant. Maps to K8s namespace (`{tenantSlug}-{workspaceSlug}`). Has quota, status (ACTIVE/DELETING/DELETED). |
-| Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate |
-| RecipeVersion | Version history for recipes |
-| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. |
+| Recipe | Slim DB record for dynamic data (slug, installCount, featured, embedding). Static metadata (name, config, build logic) lives in recipe registry (`src/recipes/`). |
+| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. Has localPort/servicePort/serviceName for port-forwarding. No more helmRelease/chartVersion/revision. |
+| DeploymentEvent | Append-only audit trail for deployment state changes. Actions: created, config_changed, restarted, health_changed, removed, failed, status_changed. Indexed on [deploymentId, createdAt]. |
 | Stack | Groups of deployments (future use) |
 | Conversation | Chat thread. Belongs to User + Tenant |
 | Message | Chat message. Belongs to Conversation. Has role + content |
@@ -143,11 +165,17 @@ ai-k8s/                          # Workspace root = Next.js app
 | `/api/catalog` | GET | Public | List recipes (with filters) |
 | `/api/catalog/[slug]` | GET | Public | Recipe detail |
 | `/api/catalog/search` | POST | Public | Semantic search (pgvector) |
+| `/api/apps/install` | POST | Protected | One-click install (wraps deployment engine) |
 | `/api/chat` | POST | Protected | AI agent streaming (workspace-scoped) |
 | `/api/deployments` | GET | Protected | List deployments in active workspace |
 | `/api/deployments/[id]` | GET, DELETE | Protected | Deployment detail / remove |
 | `/api/deployments/[id]/logs` | GET | Protected | Pod logs |
+| `/api/deployments/[id]/access` | GET | Protected | Connection info (credentials, host, port) |
+| `/api/deployments/[id]/export-data` | POST | Protected | Stream data export (pg_dump, tar, etc.) |
+| `/api/deployments/[id]/import-data` | POST | Protected | Upload data import (file upload) |
 | `/api/workspaces` | GET, POST | Protected | List / create workspaces |
 | `/api/workspaces/[id]` | GET, DELETE | Protected | Workspace detail / delete (+ all resources) |
+| `/api/workspaces/[id]/export` | GET | Protected | Export workspace to JSON snapshot (?download=true for file) |
+| `/api/workspaces/[id]/import` | POST | Protected | Import/restore from snapshot (?force=true to replace) |
 | `/api/workspaces/switch` | POST | Protected | Switch active workspace (sets cookie) |
 | `/api/stack` | GET | Protected | Canvas nodes + edges (active workspace) |

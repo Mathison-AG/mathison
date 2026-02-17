@@ -6,9 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
-  LayoutDashboard,
-  Grid3X3,
-  Rocket,
+  Store,
+  AppWindow,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -18,16 +17,18 @@ import {
   Monitor,
   ChevronsUpDown,
   Check,
-  Layers,
+  Layers
 } from "lucide-react";
 import { useTheme } from "next-themes";
+
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -35,15 +36,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/catalog", label: "Catalog", icon: Grid3X3 },
-  { href: "/deployments", label: "Deployments", icon: Rocket },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "App Store", icon: Store },
+  { href: "/apps", label: "My Apps", icon: AppWindow },
+  { href: "/settings", label: "Settings", icon: Settings }
 ] as const;
 
 interface WorkspaceOption {
@@ -67,7 +67,7 @@ export function Sidebar({
   userName,
   userEmail,
   workspaces,
-  activeWorkspaceId,
+  activeWorkspaceId
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -98,7 +98,7 @@ export function Sidebar({
         .join("")
         .toUpperCase()
         .slice(0, 2)
-    : userEmail?.[0]?.toUpperCase() ?? "U";
+    : (userEmail?.[0]?.toUpperCase() ?? "U");
 
   async function handleWorkspaceSwitch(workspaceId: string) {
     if (workspaceId === activeWorkspaceId) return;
@@ -107,7 +107,7 @@ export function Sidebar({
       const res = await fetch("/api/workspaces/switch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspaceId }),
+        body: JSON.stringify({ workspaceId })
       });
 
       if (res.ok) {
@@ -117,6 +117,7 @@ export function Sidebar({
       }
     } catch (err) {
       console.error("[sidebar] Failed to switch workspace:", err);
+      toast.error("Couldn't switch workspace. Please try again.");
     }
   }
 
@@ -133,9 +134,7 @@ export function Sidebar({
           M
         </div>
         {!collapsed && (
-          <span className="text-lg font-semibold tracking-tight">
-            Mathison
-          </span>
+          <span className="text-lg font-semibold tracking-tight">Mathison</span>
         )}
       </div>
 
@@ -156,7 +155,11 @@ export function Sidebar({
                     <span className="sr-only">Switch workspace</span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" className="w-48">
+                <DropdownMenuContent
+                  side="right"
+                  align="start"
+                  className="w-48"
+                >
                   {workspaces.map((ws) => (
                     <DropdownMenuItem
                       key={ws.id}
@@ -165,7 +168,9 @@ export function Sidebar({
                       {ws.id === activeWorkspaceId && (
                         <Check className="mr-2 size-4" />
                       )}
-                      <span className={ws.id !== activeWorkspaceId ? "ml-6" : ""}>
+                      <span
+                        className={ws.id !== activeWorkspaceId ? "ml-6" : ""}
+                      >
                         {ws.name}
                       </span>
                     </DropdownMenuItem>
@@ -194,7 +199,10 @@ export function Sidebar({
                 <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+            <DropdownMenuContent
+              align="start"
+              className="w-[var(--radix-dropdown-menu-trigger-width)]"
+            >
               {workspaces.map((ws) => (
                 <DropdownMenuItem
                   key={ws.id}
@@ -270,11 +278,7 @@ export function Sidebar({
             <TooltipTrigger asChild>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-full"
-                  >
+                  <Button variant="ghost" size="icon" className="w-full">
                     <Sun className="size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
                     <Moon className="absolute size-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                     <span className="sr-only">Toggle theme</span>

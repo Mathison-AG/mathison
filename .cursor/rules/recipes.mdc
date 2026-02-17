@@ -1,0 +1,234 @@
+---
+description: Playbook for adding new recipes to the app catalog. Follow this when creating any new recipe.
+globs:
+  - src/recipes/**
+---
+
+# Recipe Development Playbook
+
+Step-by-step process for adding a new app to the Mathison catalog. Follow this every time.
+
+---
+
+## Phase 1: Research
+
+Before writing any code, answer these questions about the app:
+
+### Container Image
+- **Which Docker image?** Check Docker Hub or the project's official docs. Prefer images from the project itself (e.g., `louislam/uptime-kuma`). Bitnami images are solid for databases but not always ideal for apps.
+- **What tag?** Use a stable version tag (e.g., `1`, `latest`, or a specific version). Check Docker Hub for available tags.
+- **What port?** Find the container's default HTTP/TCP port from the project docs.
+
+### Environment Variables
+- **How is it configured?** Most apps use env vars. Check the project's Docker documentation for the full list.
+- **Which env vars are required?** Focus on database connection, admin credentials, base URL, storage paths.
+- **What are the defaults?** Many apps work with minimal config.
+
+### Storage
+- **Does it need persistent storage?** If yes, what path does it write to?
+- **What's a sensible default size?** Usually 1Gi–5Gi for app data, 5Gi–20Gi for databases.
+
+### Dependencies
+- **Does it need a database?** PostgreSQL, MySQL, MongoDB, SQLite (embedded)?
+- **Does it need Redis?** For caching, queues, or sessions?
+- **Does it need object storage?** MinIO for file uploads?
+- **Are all required dependencies already in the catalog?** If not, add them first.
+
+### Health & Probes
+- **Does it have a health endpoint?** (e.g., `/api/health`, `/healthz`, `/`)
+- **How long does it take to start?** Sets `initialDelaySeconds`.
+
+### Gotchas
+- **Security context requirements?** Some containers need root to start, then drop privileges. Some need specific UID/GID.
+- **Init scripts?** Some apps auto-configure on first boot.
+- **Multi-component?** Some apps (e.g., Immich) need multiple containers. These are complex — use custom `build()` or defer.
+
+## Phase 2: Implementation
+
+### Step 1 — Create Recipe File
+
+Create `src/recipes/{slug}/index.ts`. Choose the right archetype:
+
+| App Type | Archetype | Examples |
+|----------|-----------|----------|
+| SQL database | `database()` | PostgreSQL, MySQL |
+| Cache/KV store | `cache()` | Redis, Memcached |
+| Web application | `webApp()` | Uptime Kuma, Gitea, Vaultwarden |
+| Object storage | `objectStore()` | MinIO |
+| Complex multi-container | Custom `build()` | n8n (worker mode) |
+
+Reference templates:
+- **Simplest webApp**: `src/recipes/uptime-kuma/index.ts` — no deps, no secrets, straightforward
+- **WebApp with deps**: `src/recipes/n8n/index.ts` — PostgreSQL dep, secrets, custom build
+- **Database**: `src/recipes/postgresql/index.ts` — database archetype, secrets, connection info
+- **Cache**: `src/recipes/redis/index.ts` — cache archetype, optional persistence
+
+### Required fields checklist:
+
+```
+Identity:        slug, displayName, category, description, tags
+Consumer:        shortDescription, useCases (3+), gettingStarted (markdown)
+Links:           websiteUrl, documentationUrl
+Config:          configSchema (Zod v4, always include cpu/memory request/limit)
+Container:       image, imageTag, containerPort
+Environment:     env function
+Probes:          livenessProbe, readinessProbe
+Health:          healthCheck function
+AI:              aiHints { summary, whenToSuggest, pairsWellWith }
+```
+
+### Optional but recommended:
+
+```
+Secrets:         secrets (auto-generated passwords, API keys)
+Dependencies:    dependencies (other recipes this needs)
+Persistence:     persistence { enabled, mountPath, storageSize }
+Ingress:         ingress { enabled, hostnameTemplate, port, serviceNameSuffix }
+Data:            dataExport, dataImport (for backup/restore)
+Featured:        featured: true (shows in "Popular" section)
+```
+
+### Step 2 — Register Recipe
+
+Add to `src/recipes/registry.ts`:
+
+```typescript
+import { myRecipe } from "./my-recipe";
+// ...
+register(myRecipe as RecipeDefinition<unknown>);
+```
+
+### Step 3 — Add Icon
+
+Place an SVG icon at `public/icons/{slug}.svg`.
+- Should work at 40px and 80px sizes
+- Consistent with existing icons in style
+- Can source from the project's branding assets, Simple Icons, or similar
+
+### Step 4 — Typecheck
+
+Run `docker compose -f docker-compose.local.yml exec web yarn typecheck` to verify no type errors.
+
+## Phase 3: Testing
+
+### 1. Seed the database
+
+```bash
+docker compose -f docker-compose.local.yml exec web npx prisma db seed
+```
+
+This creates the DB record and generates embeddings.
+
+### 2. Verify catalog API
+
+```bash
+docker compose -f docker-compose.local.yml exec web yarn chat "what apps are available?"
+```
+
+The new app should appear in the list.
+
+### 3. Test deployment (when kind cluster is available)
+
+```bash
+docker compose -f docker-compose.local.yml exec web yarn chat "install {app name}"
+```
+
+Verify:
+- [ ] Deployment reaches RUNNING status
+- [ ] Dependencies auto-deploy if needed
+- [ ] Health check passes
+- [ ] Port-forward works (web UI loads or service connects)
+
+### 4. Cleanup
+
+```bash
+docker compose -f docker-compose.local.yml exec web yarn chat "remove {app name}"
+```
+
+## Phase 4: Validation Checklist
+
+Before committing, verify:
+
+- [ ] Recipe file is clean, well-commented, follows existing patterns
+- [ ] `yarn typecheck` passes
+- [ ] Recipe appears in catalog API
+- [ ] Consumer metadata complete (shortDescription, useCases, gettingStarted)
+- [ ] AI hints accurate (summary, whenToSuggest, pairsWellWith)
+- [ ] Icon exists at `public/icons/{slug}.svg`
+- [ ] Category is appropriate and exists in the filter list
+
+## Common Patterns
+
+### Dependency declaration (webApp that needs PostgreSQL + Redis)
+
+```typescript
+dependencies: {
+  db: {
+    recipe: "postgresql",
+    reason: "Stores application data",
+    config: { database: "myapp" },
+  },
+  cache: {
+    recipe: "redis",
+    reason: "Session storage and caching",
+  },
+},
+```
+
+### Using dependency connection info in env vars
+
+```typescript
+env: (ctx) => [
+  { name: "DATABASE_URL", value: `postgresql://${ctx.deps?.["db"]?.username}:${ctx.deps?.["db"]?.password}@${ctx.deps?.["db"]?.host}:${ctx.deps?.["db"]?.port}/${ctx.deps?.["db"]?.database}` },
+  { name: "REDIS_URL", value: `redis://:${ctx.deps?.["cache"]?.password ?? ""}@${ctx.deps?.["cache"]?.host}:${ctx.deps?.["cache"]?.port}` },
+],
+```
+
+### Auto-generated secrets
+
+```typescript
+secrets: {
+  admin_password: {
+    description: "Admin user password",
+    generate: true,
+    length: 24,
+  },
+  secret_key: {
+    description: "Application secret key for sessions/CSRF",
+    generate: true,
+    length: 32,
+  },
+},
+```
+
+### Standard resource config fields
+
+Always include these in configSchema so users can tune resources:
+
+```typescript
+cpu_request: z.string().default("50m"),
+memory_request: z.string().default("128Mi"),
+cpu_limit: z.string().default("250m"),
+memory_limit: z.string().default("256Mi"),
+```
+
+## Categories
+
+Valid categories (used in catalog filters):
+
+- `automation` — workflow automation, iPaaS
+- `project-management` — task/project tracking
+- `communication` — chat, messaging
+- `knowledge` — wikis, notes, documentation
+- `development` — dev tools, Git, code editors
+- `media` — file storage, photos, media management
+- `analytics` — dashboards, BI, reporting
+- `monitoring` — uptime, metrics, alerting
+- `storage` — object storage, file servers
+- `database` — databases (often auto-deployed as dependencies)
+- `cache` — caching, KV stores
+- `security` — password managers, auth, secrets
+
+## Recipe Backlog
+
+See `.cursor/tasks/backlog/recipe-backlog.md` for the prioritized list of recipes to add next.

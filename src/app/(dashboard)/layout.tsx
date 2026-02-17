@@ -16,6 +16,16 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Check onboarding state — redirect new users to welcome page
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { onboardingCompletedAt: true },
+  });
+
+  if (!user?.onboardingCompletedAt) {
+    redirect("/welcome");
+  }
+
   // Fetch all workspaces for the sidebar selector
   const workspaces = await prisma.workspace.findMany({
     where: { tenantId: session.user.tenantId, status: { not: "DELETED" } },

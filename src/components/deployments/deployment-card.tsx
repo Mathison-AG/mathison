@@ -42,7 +42,7 @@ export function DeploymentCard({ deployment }: DeploymentCardProps) {
   const resources = getResourceSummary(deployment.resources);
 
   return (
-    <Link href={`/deployments/${deployment.id}`} className="block">
+    <Link href={`/apps/${deployment.id}`} className="block">
       <div className="group flex items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/50">
         {/* Icon */}
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-background">

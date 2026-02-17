@@ -23,7 +23,7 @@ export async function GET(
 
     const deployment = await prisma.deployment.findFirst({
       where: { id, tenantId: session.user.tenantId },
-      select: { namespace: true, helmRelease: true, status: true }
+      select: { namespace: true, name: true, status: true }
     });
 
     if (!deployment) {
@@ -42,7 +42,7 @@ export async function GET(
 
     const logs = await getReleaseLogs(
       deployment.namespace,
-      deployment.helmRelease,
+      deployment.name,
       lines
     );
 

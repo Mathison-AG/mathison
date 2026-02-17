@@ -33,7 +33,7 @@ const statusConfig: Record<DeploymentStatus, StatusConfig> = {
     icon: Clock
   },
   DEPLOYING: {
-    label: "Deploying",
+    label: "Installing",
     variant: "secondary",
     icon: Loader2,
     animate: true

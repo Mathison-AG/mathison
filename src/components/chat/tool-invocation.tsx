@@ -4,17 +4,17 @@ import { useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Database,
   ExternalLink,
-  FileText,
+  HelpCircle,
   Loader2,
   Package,
+  Plus,
   Search,
   Server,
   Settings,
   ShieldAlert,
+  Stethoscope,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -45,14 +45,16 @@ function statusVariant(
   status: string
 ): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
+    case "running":
     case "RUNNING":
-    case "HEALTHY":
       return "default";
-    case "PENDING":
-    case "DEPLOYING":
+    case "installing":
+    case "updating":
+    case "setting up...":
       return "secondary";
+    case "failed":
     case "FAILED":
-    case "ERROR":
+    case "something went wrong":
       return "destructive";
     default:
       return "outline";
@@ -65,55 +67,65 @@ const TOOL_META: Record<
   string,
   { label: string; icon: React.ElementType; pendingLabel: string }
 > = {
-  searchCatalog: {
-    label: "Catalog Search",
+  findApps: {
+    label: "Searching Apps",
     icon: Search,
-    pendingLabel: "Searching catalog...",
+    pendingLabel: "Searching apps...",
   },
-  getRecipe: {
-    label: "Service Details",
+  getAppInfo: {
+    label: "App Info",
     icon: Package,
-    pendingLabel: "Loading service details...",
+    pendingLabel: "Loading app details...",
   },
-  deployService: {
-    label: "Deploy Service",
-    icon: Upload,
-    pendingLabel: "Deploying service...",
+  installApp: {
+    label: "Installing App",
+    icon: Plus,
+    pendingLabel: "Installing app...",
   },
-  getStackStatus: {
-    label: "Stack Status",
+  listMyApps: {
+    label: "Your Apps",
     icon: Server,
-    pendingLabel: "Checking your services...",
+    pendingLabel: "Checking your apps...",
   },
-  getServiceDetail: {
-    label: "Service Details",
+  getAppStatus: {
+    label: "App Status",
     icon: Settings,
-    pendingLabel: "Loading service details...",
+    pendingLabel: "Checking app status...",
   },
-  getServiceLogs: {
-    label: "Service Logs",
-    icon: FileText,
-    pendingLabel: "Fetching logs...",
+  diagnoseApp: {
+    label: "Diagnosing",
+    icon: Stethoscope,
+    pendingLabel: "Looking into the issue...",
   },
-  updateService: {
-    label: "Update Service",
+  changeAppSettings: {
+    label: "Updating App",
     icon: Settings,
-    pendingLabel: "Updating service...",
+    pendingLabel: "Updating settings...",
   },
-  removeService: {
-    label: "Remove Service",
+  uninstallApp: {
+    label: "Removing App",
     icon: Trash2,
-    pendingLabel: "Removing service...",
+    pendingLabel: "Removing app...",
   },
-  createRecipe: {
-    label: "Create Recipe",
+  previewChanges: {
+    label: "Preview Changes",
     icon: Package,
-    pendingLabel: "Creating recipe...",
+    pendingLabel: "Previewing changes...",
   },
-  searchHelmCharts: {
-    label: "Package Search",
-    icon: ExternalLink,
-    pendingLabel: "Searching packages...",
+  listWorkspaces: {
+    label: "Your Projects",
+    icon: Server,
+    pendingLabel: "Loading projects...",
+  },
+  createWorkspace: {
+    label: "Creating Project",
+    icon: Plus,
+    pendingLabel: "Creating project...",
+  },
+  deleteWorkspace: {
+    label: "Deleting Project",
+    icon: Trash2,
+    pendingLabel: "Deleting project...",
   },
 };
 
@@ -139,7 +151,6 @@ export function ToolInvocationCard({
   approval,
   onToolApprovalResponse,
 }: ToolPartProps) {
-  // Extract the tool name from the part type (e.g. "tool-searchCatalog" → "searchCatalog")
   const name = toolName || type.replace(/^tool-/, "");
   const meta = getToolMeta(name);
   const Icon = meta.icon;
@@ -247,11 +258,10 @@ function ToolApprovalCard({
     onApprovalResponse({
       id: approvalId,
       approved: false,
-      reason: "User cancelled the removal",
+      reason: "User cancelled the action",
     });
   }
 
-  // Build a user-friendly description based on the tool
   const description = getApprovalDescription(toolName, input);
 
   if (responded) {
@@ -273,7 +283,7 @@ function ToolApprovalCard({
       </div>
       <p className="mt-2 text-sm text-foreground">{description}</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        This action cannot be undone. All data associated with this service will
+        This action cannot be undone. All data associated with this app will
         be permanently deleted.
       </p>
       <div className="mt-3 flex items-center gap-2">
@@ -284,7 +294,7 @@ function ToolApprovalCard({
           onClick={handleApprove}
         >
           <Trash2 className="mr-1.5 size-3" />
-          Confirm Delete
+          Confirm
         </Button>
         <Button
           size="sm"
@@ -300,10 +310,15 @@ function ToolApprovalCard({
 }
 
 function getApprovalDescription(toolName: string, input: unknown): string {
-  if (toolName === "removeService") {
-    const data = input as { serviceName?: string; deploymentId?: string };
-    const name = data.serviceName || "this service";
+  if (toolName === "uninstallApp") {
+    const data = input as { appName?: string; appId?: string };
+    const name = data.appName || "this app";
     return `Are you sure you want to remove ${name}?`;
+  }
+  if (toolName === "deleteWorkspace") {
+    const data = input as { workspaceName?: string };
+    const name = data.workspaceName || "this project";
+    return `Are you sure you want to delete ${name} and all its apps?`;
   }
   return "Do you want to proceed with this action?";
 }
@@ -317,44 +332,42 @@ interface ToolResultProps {
 
 function ToolResultContent({ toolName, output }: ToolResultProps) {
   switch (toolName) {
-    case "searchCatalog":
-      return <SearchCatalogResult output={output} />;
-    case "getRecipe":
-      return <GetRecipeResult output={output} />;
-    case "deployService":
-      return <DeployResult output={output} />;
-    case "getStackStatus":
-      return <StackStatusResult output={output} />;
-    case "getServiceDetail":
-      return <ServiceDetailResult output={output} />;
-    case "getServiceLogs":
-      return <LogsResult output={output} />;
-    case "updateService":
+    case "findApps":
+      return <FindAppsResult output={output} />;
+    case "getAppInfo":
+      return <AppInfoResult output={output} />;
+    case "installApp":
+      return <InstallResult output={output} />;
+    case "listMyApps":
+      return <MyAppsResult output={output} />;
+    case "getAppStatus":
+      return <AppStatusResult output={output} />;
+    case "diagnoseApp":
+      return <DiagnoseResult output={output} />;
+    case "changeAppSettings":
       return <UpdateResult output={output} />;
-    case "removeService":
+    case "uninstallApp":
       return <RemoveResult output={output} />;
-    case "createRecipe":
-      return <CreateRecipeResult output={output} />;
-    case "searchHelmCharts":
-      return <HelmSearchResult output={output} />;
+    case "previewChanges":
+      return <PreviewChangesResult output={output} />;
     default:
       return <GenericResult output={output} />;
   }
 }
 
-// ─── Catalog search ──────────────────────────────────────
+// ─── Find apps ───────────────────────────────────────────
 
-function SearchCatalogResult({ output }: { output: unknown }) {
+function FindAppsResult({ output }: { output: unknown }) {
   const items = output as Array<{
     slug: string;
-    displayName: string;
-    description: string;
+    name: string;
+    tagline: string;
     category: string;
-    tier: string;
+    popular: boolean;
   }>;
 
   if (!Array.isArray(items) || items.length === 0) {
-    return <p className="text-muted-foreground">No services found.</p>;
+    return <p className="text-muted-foreground">No apps found.</p>;
   }
 
   return (
@@ -364,51 +377,54 @@ function SearchCatalogResult({ output }: { output: unknown }) {
           key={item.slug}
           className="flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5"
         >
-          <Database className="size-3.5 shrink-0 text-muted-foreground" />
+          <Package className="size-3.5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <span className="font-medium">{item.displayName}</span>
+            <span className="font-medium">{item.name}</span>
             <span className="ml-1.5 text-xs text-muted-foreground">
               {item.category}
             </span>
           </div>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-            {item.tier}
-          </Badge>
+          {item.popular && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+              Popular
+            </Badge>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Recipe detail ───────────────────────────────────────
+// ─── App info ────────────────────────────────────────────
 
-function GetRecipeResult({ output }: { output: unknown }) {
-  const recipe = output as {
-    slug?: string;
-    displayName?: string;
+function AppInfoResult({ output }: { output: unknown }) {
+  const app = output as {
+    name?: string;
+    tagline?: string;
     description?: string;
-    category?: string;
-    tags?: string[];
+    useCases?: string[];
     error?: string;
   };
 
-  if (recipe.error) {
-    return <p className="text-muted-foreground">{recipe.error}</p>;
+  if (app.error) {
+    return <p className="text-muted-foreground">{app.error}</p>;
   }
 
   return (
     <div className="space-y-1">
-      <p className="font-medium">{recipe.displayName}</p>
-      <p className="text-xs text-muted-foreground">{recipe.description}</p>
-      {recipe.tags && recipe.tags.length > 0 && (
+      <p className="font-medium">{app.name}</p>
+      <p className="text-xs text-muted-foreground">
+        {app.tagline || app.description}
+      </p>
+      {app.useCases && app.useCases.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-1">
-          {recipe.tags.map((tag) => (
+          {app.useCases.slice(0, 3).map((uc) => (
             <Badge
-              key={tag}
+              key={uc}
               variant="secondary"
               className="text-[10px] px-1.5 py-0"
             >
-              {tag}
+              {uc}
             </Badge>
           ))}
         </div>
@@ -417,12 +433,11 @@ function GetRecipeResult({ output }: { output: unknown }) {
   );
 }
 
-// ─── Deploy ──────────────────────────────────────────────
+// ─── Install ─────────────────────────────────────────────
 
-function DeployResult({ output }: { output: unknown }) {
+function InstallResult({ output }: { output: unknown }) {
   const data = output as {
-    deploymentId?: string;
-    name?: string;
+    appName?: string;
     status?: string;
     message?: string;
     error?: string;
@@ -440,10 +455,10 @@ function DeployResult({ output }: { output: unknown }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
-        <span className="font-medium">{data.name}</span>
+        <span className="font-medium">{data.appName}</span>
         {data.status && (
           <Badge variant={statusVariant(data.status)} className="text-[10px]">
-            {data.status}
+            {data.status === "installing" ? "Setting up" : data.status}
           </Badge>
         )}
       </div>
@@ -454,61 +469,64 @@ function DeployResult({ output }: { output: unknown }) {
   );
 }
 
-// ─── Stack status ────────────────────────────────────────
+// ─── My apps ─────────────────────────────────────────────
 
-function StackStatusResult({ output }: { output: unknown }) {
+function MyAppsResult({ output }: { output: unknown }) {
   const data = output as {
-    services?: Array<{
-      deploymentId: string;
-      name: string;
-      recipe: string;
-      status: string;
-      category: string;
+    apps?: Array<{
+      appId: string;
+      appName: string;
+      displayName: string;
+      statusLabel: string;
+      healthy: boolean;
     }>;
     message?: string;
   };
 
-  if (data.message && (!data.services || data.services.length === 0)) {
+  if (data.message && (!data.apps || data.apps.length === 0)) {
     return <p className="text-muted-foreground">{data.message}</p>;
   }
 
-  const services = data.services ?? [];
+  const apps = data.apps ?? [];
 
   return (
     <div className="space-y-1.5">
-      {services.map((svc) => (
+      {apps.map((app) => (
         <div
-          key={svc.deploymentId}
+          key={app.appId}
           className="flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5"
         >
-          <Server className="size-3.5 shrink-0 text-muted-foreground" />
+          <span
+            className={cn(
+              "size-2 rounded-full shrink-0",
+              app.healthy ? "bg-green-500" : "bg-yellow-500"
+            )}
+          />
           <div className="min-w-0 flex-1">
-            <span className="font-medium">{svc.name}</span>
+            <span className="font-medium">{app.appName}</span>
             <span className="ml-1.5 text-xs text-muted-foreground">
-              {svc.recipe}
+              {app.displayName}
             </span>
           </div>
-          <Badge
-            variant={statusVariant(svc.status)}
-            className="text-[10px] px-1.5 py-0"
-          >
-            {svc.status}
-          </Badge>
+          <span className="text-[10px] text-muted-foreground">
+            {app.statusLabel}
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── Service detail ──────────────────────────────────────
+// ─── App status ──────────────────────────────────────────
 
-function ServiceDetailResult({ output }: { output: unknown }) {
+function AppStatusResult({ output }: { output: unknown }) {
   const data = output as {
-    name?: string;
-    recipe?: string;
-    status?: string;
+    appName?: string;
+    displayName?: string;
+    statusLabel?: string;
     url?: string | null;
-    pods?: Array<{ name: string; status: string; restarts: number }>;
+    healthy?: boolean;
+    installedAt?: string;
     error?: string;
   };
 
@@ -519,55 +537,39 @@ function ServiceDetailResult({ output }: { output: unknown }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="font-medium">{data.name}</span>
-        {data.status && (
-          <Badge variant={statusVariant(data.status)} className="text-[10px]">
-            {data.status}
-          </Badge>
-        )}
+        <span
+          className={cn(
+            "size-2 rounded-full",
+            data.healthy ? "bg-green-500" : "bg-yellow-500"
+          )}
+        />
+        <span className="font-medium">{data.appName}</span>
+        <span className="text-xs text-muted-foreground">
+          {data.statusLabel}
+        </span>
       </div>
-      {data.recipe && (
-        <p className="text-xs text-muted-foreground">Type: {data.recipe}</p>
-      )}
       {data.url && (
-        <p className="text-xs text-blue-500 truncate">{data.url}</p>
-      )}
-      {data.pods && data.pods.length > 0 && (
-        <div className="mt-1 space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">
-            Instances
-          </p>
-          {data.pods.map((pod) => (
-            <div
-              key={pod.name}
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <span
-                className={cn(
-                  "size-1.5 rounded-full",
-                  pod.status === "Running" ? "bg-green-500" : "bg-yellow-500"
-                )}
-              />
-              <span className="truncate">{pod.name}</span>
-              {pod.restarts > 0 && (
-                <span className="text-yellow-600">
-                  {pod.restarts} restart{pod.restarts > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-          ))}
+        <div className="flex items-center gap-1 text-xs text-blue-500">
+          <ExternalLink className="size-3" />
+          <span className="truncate">{data.url}</span>
         </div>
+      )}
+      {data.installedAt && (
+        <p className="text-xs text-muted-foreground">
+          Installed {data.installedAt}
+        </p>
       )}
     </div>
   );
 }
 
-// ─── Logs ────────────────────────────────────────────────
+// ─── Diagnose ────────────────────────────────────────────
 
-function LogsResult({ output }: { output: unknown }) {
+function DiagnoseResult({ output }: { output: unknown }) {
   const data = output as {
-    name?: string;
-    logs?: string;
+    appName?: string;
+    diagnosis?: string;
+    suggestion?: string | null;
     error?: string;
   };
 
@@ -576,15 +578,18 @@ function LogsResult({ output }: { output: unknown }) {
   }
 
   return (
-    <div className="space-y-1">
-      {data.name && (
-        <p className="text-xs font-medium text-muted-foreground">
-          Logs: {data.name}
-        </p>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Stethoscope className="size-3.5 text-muted-foreground" />
+        <span className="font-medium">{data.appName}</span>
+      </div>
+      <p className="text-xs text-muted-foreground">{data.diagnosis}</p>
+      {data.suggestion && (
+        <div className="flex items-center gap-1.5 text-xs text-blue-500">
+          <HelpCircle className="size-3 shrink-0" />
+          <span>{data.suggestion}</span>
+        </div>
       )}
-      <pre className="max-h-40 overflow-auto rounded bg-muted/80 p-2 text-[11px] leading-relaxed font-mono">
-        {data.logs ?? "No logs available."}
-      </pre>
     </div>
   );
 }
@@ -593,7 +598,7 @@ function LogsResult({ output }: { output: unknown }) {
 
 function UpdateResult({ output }: { output: unknown }) {
   const data = output as {
-    deploymentId?: string;
+    appId?: string;
     status?: string;
     message?: string;
     error?: string;
@@ -611,7 +616,7 @@ function UpdateResult({ output }: { output: unknown }) {
   return (
     <div className="flex items-center gap-2">
       <CheckCircle2 className="size-3.5 text-green-500" />
-      <span>{data.message ?? "Service updated."}</span>
+      <span>{data.message ?? "Settings updated."}</span>
     </div>
   );
 }
@@ -620,7 +625,7 @@ function UpdateResult({ output }: { output: unknown }) {
 
 function RemoveResult({ output }: { output: unknown }) {
   const data = output as {
-    deploymentId?: string;
+    appId?: string;
     status?: string;
     message?: string;
     error?: string;
@@ -638,77 +643,48 @@ function RemoveResult({ output }: { output: unknown }) {
   return (
     <div className="flex items-center gap-2">
       <Trash2 className="size-3.5 text-muted-foreground" />
-      <span>{data.message ?? "Service removed."}</span>
+      <span>{data.message ?? "App removed."}</span>
     </div>
   );
 }
 
-// ─── Create recipe ───────────────────────────────────────
+// ─── Preview changes ─────────────────────────────────────
 
-function CreateRecipeResult({ output }: { output: unknown }) {
+function PreviewChangesResult({ output }: { output: unknown }) {
   const data = output as {
-    slug?: string;
-    displayName?: string;
-    status?: string;
+    appName?: string;
     message?: string;
+    changes?: Array<{ setting: string; from: string; to: string }>;
+    note?: string;
+    error?: string;
   };
 
-  return (
-    <div className="space-y-1">
-      {data.displayName && (
-        <p className="font-medium">{data.displayName}</p>
-      )}
-      {data.message && (
-        <p className="text-xs text-muted-foreground">{data.message}</p>
-      )}
-    </div>
-  );
-}
-
-// ─── Helm search ─────────────────────────────────────────
-
-function HelmSearchResult({ output }: { output: unknown }) {
-  const data = output as
-    | Array<{
-        name: string;
-        repo: string;
-        description: string;
-        version: string;
-        url: string;
-      }>
-    | { error: string };
-
-  if (!Array.isArray(data)) {
+  if (data.error) {
     return (
-      <p className="text-muted-foreground">
-        {(data as { error: string }).error ?? "No results"}
-      </p>
+      <p className="text-xs text-destructive">{data.error}</p>
     );
   }
 
-  if (data.length === 0) {
-    return <p className="text-muted-foreground">No packages found.</p>;
-  }
-
   return (
-    <div className="space-y-1.5">
-      {data.slice(0, 5).map((pkg) => (
-        <div
-          key={`${pkg.repo}-${pkg.name}`}
-          className="rounded-md bg-muted/50 px-2.5 py-1.5"
-        >
-          <div className="flex items-center gap-2">
-            <Package className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="font-medium text-xs">{pkg.name}</span>
-            <span className="text-[10px] text-muted-foreground">
-              v{pkg.version}
-            </span>
-          </div>
-          <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
-            {pkg.description}
-          </p>
+    <div className="space-y-2">
+      {data.message && (
+        <p className="text-xs text-muted-foreground">{data.message}</p>
+      )}
+      {data.changes && data.changes.length > 0 && (
+        <div className="space-y-1">
+          {data.changes.map((change) => (
+            <div key={change.setting} className="text-xs flex items-center gap-2">
+              <span className="font-mono font-medium">{change.setting}:</span>
+              <span className="text-muted-foreground">{change.from}</span>
+              <span className="text-muted-foreground">&rarr;</span>
+              <span className="text-foreground">{change.to}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+      {data.note && (
+        <p className="text-xs text-muted-foreground italic">{data.note}</p>
+      )}
     </div>
   );
 }

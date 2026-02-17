@@ -37,11 +37,14 @@ Everything agent-related lives under `.cursor/`:
 - `dev-setup.mdc` — Docker, ports, env vars, kind cluster, test credentials.
 - `testing.mdc` — E2E testing procedures, curl commands, browser verification, cleanup.
 
+### Tasks (`.cursor/tasks/`) — Project management
+- **Backlog**: `.cursor/tasks/backlog/` — upcoming tasks and feature specs
+- **Completed**: `.cursor/tasks/completed/` — finished tasks (historical reference)
+
 ### Other files
 - **Platform spec**: `.cursor/PLATFORM_PROMPT.md` — full original architecture spec (reference, read manually when needed)
 - **Reference data**: `.cursor/reference/` — real-world Helm values
 - **Feature planning**: `.cursor/templates/feature.md` — template for new features
-- **Build archive**: `.cursor/archive/tasks/` — completed MVP build steps (historical)
 
 ## Session Startup Checklist
 

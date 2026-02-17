@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
 import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
+import { enrichDeploymentRecipe } from "@/lib/catalog/metadata";
 import type { PodResources, ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments ─────────────────────────────────
@@ -34,12 +35,7 @@ export async function GET(req: Request) {
       },
       include: {
         recipe: {
-          select: {
-            slug: true,
-            displayName: true,
-            iconUrl: true,
-            category: true,
-          },
+          select: { slug: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -56,25 +52,25 @@ export async function GET(req: Request) {
       const results = await Promise.allSettled(
         runningDeployments.map(async (d) => {
           const [resources, ports] = await Promise.all([
-            getReleaseResources(d.namespace, d.helmRelease),
-            getReleaseServicePorts(d.namespace, d.helmRelease),
+            getReleaseResources(d.namespace, d.name),
+            getReleaseServicePorts(d.namespace, d.name),
           ]);
-          return { helmRelease: d.helmRelease, resources, ports };
+          return { name: d.name, resources, ports };
         })
       );
 
       for (const result of results) {
         if (result.status === "fulfilled") {
-          resourceMap.set(result.value.helmRelease, result.value.resources);
-          portMap.set(result.value.helmRelease, result.value.ports);
+          resourceMap.set(result.value.name, result.value.resources);
+          portMap.set(result.value.name, result.value.ports);
         }
       }
     }
 
     const enriched = deployments.map((d) => ({
-      ...d,
-      resources: resourceMap.get(d.helmRelease) ?? [],
-      ports: portMap.get(d.helmRelease) ?? [],
+      ...enrichDeploymentRecipe(d),
+      resources: resourceMap.get(d.name) ?? [],
+      ports: portMap.get(d.name) ?? [],
     }));
 
     return NextResponse.json(enriched);

@@ -14,7 +14,6 @@ import {
   Cpu,
   MemoryStick,
   Tag,
-  Hash,
   Globe,
   Network,
 } from "lucide-react";
@@ -97,17 +96,18 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Failed to remove service");
+        alert(data.error || "Failed to remove app");
         setIsDeleting(false);
         return;
       }
 
       // Invalidate and redirect
+      await queryClient.invalidateQueries({ queryKey: ["my-apps"] });
       await queryClient.invalidateQueries({ queryKey: ["deployments"] });
       await queryClient.invalidateQueries({ queryKey: ["stack"] });
-      router.push("/deployments");
+      router.push("/apps");
     } catch {
-      alert("Failed to remove service");
+      alert("Failed to remove app");
       setIsDeleting(false);
     }
   }
@@ -116,11 +116,11 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
     <div className="space-y-6">
       {/* Back link */}
       <Link
-        href="/deployments"
+        href="/apps"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="size-4" />
-        Back to deployments
+        Back to My Apps
       </Link>
 
       {/* Header */}
@@ -148,11 +148,6 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
           </div>
           <p className="text-muted-foreground">
             {deployment.recipe.displayName}
-            {deployment.chartVersion && (
-              <span className="text-xs ml-2 text-muted-foreground/70">
-                ({deployment.chartVersion})
-              </span>
-            )}
           </p>
           {deployment.url && (
             <a
@@ -182,12 +177,12 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Remove service?</AlertDialogTitle>
+                <AlertDialogTitle>Remove app?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This will permanently remove{" "}
                   <strong>{deployment.name}</strong> (
                   {deployment.recipe.displayName}). All data associated with
-                  this service will be lost. This action cannot be undone.
+                  this app will be lost. This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -225,7 +220,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
               <h2 className="font-semibold">Details</h2>
               <div className="space-y-3 text-sm">
                 <DetailRow
-                  label="Service"
+                  label="App"
                   value={deployment.recipe.displayName}
                 />
                 <DetailRow
@@ -240,17 +235,6 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                     icon={<Tag className="size-3" />}
                   />
                 )}
-                {deployment.chartVersion && (
-                  <DetailRow
-                    label="Chart"
-                    value={deployment.chartVersion}
-                  />
-                )}
-                <DetailRow
-                  label="Revision"
-                  value={`#${deployment.revision}`}
-                  icon={<Hash className="size-3" />}
-                />
                 <DetailRow
                   label="Created"
                   value={formatDate(deployment.createdAt)}

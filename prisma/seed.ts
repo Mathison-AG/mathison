@@ -3,15 +3,14 @@ import { config } from "dotenv";
 // Load env before any other imports that depend on env vars
 config({ path: ".env.local" });
 
-import { Prisma } from "../src/generated/prisma/client";
 import { prisma } from "../src/lib/db";
-import { seedRecipes } from "../src/lib/catalog/seed-data";
+import { listRecipeDefinitions } from "../src/recipes/registry";
 import {
   generateEmbedding,
   buildEmbeddingText,
 } from "../src/lib/catalog/embedding";
 
-import type { AiHints } from "../src/types/recipe";
+import type { AiHints } from "../src/recipes/_base/types";
 
 async function main() {
   console.log("🌱 Seeding database...\n");
@@ -27,81 +26,32 @@ async function main() {
     );
   }
 
-  for (const recipe of seedRecipes) {
+  // Get all recipes from the typed registry
+  const recipes = listRecipeDefinitions();
+
+  for (const recipe of recipes) {
     console.log(`  📦 Upserting: ${recipe.displayName} (${recipe.slug})`);
 
-    // Upsert the recipe (idempotent)
+    // Upsert slim recipe entry (idempotent)
     const row = await prisma.recipe.upsert({
       where: { slug: recipe.slug },
       create: {
         slug: recipe.slug,
-        displayName: recipe.displayName,
-        description: recipe.description,
-        category: recipe.category,
-        tags: recipe.tags ?? [],
-        iconUrl: recipe.iconUrl ?? null,
-        sourceType: recipe.sourceType ?? "helm",
-        chartUrl: recipe.chartUrl,
-        chartVersion: recipe.chartVersion ?? null,
-        configSchema:
-          (recipe.configSchema as unknown as Prisma.InputJsonValue) ?? {},
-        secretsSchema:
-          (recipe.secretsSchema as unknown as Prisma.InputJsonValue) ?? {},
-        valuesTemplate: recipe.valuesTemplate ?? "",
-        dependencies:
-          (recipe.dependencies as unknown as Prisma.InputJsonValue) ?? [],
-        ingressConfig:
-          (recipe.ingressConfig as unknown as Prisma.InputJsonValue) ?? {},
-        resourceDefaults:
-          (recipe.resourceDefaults as unknown as Prisma.InputJsonValue) ?? {},
-        resourceLimits:
-          (recipe.resourceLimits as unknown as Prisma.InputJsonValue) ?? {},
-        healthCheck:
-          (recipe.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
-        aiHints:
-          (recipe.aiHints as unknown as Prisma.InputJsonValue) ?? {},
-        tier: "OFFICIAL",
-        status: "PUBLISHED",
+        featured: recipe.featured ?? false,
       },
       update: {
-        displayName: recipe.displayName,
-        description: recipe.description,
-        category: recipe.category,
-        tags: recipe.tags ?? [],
-        iconUrl: recipe.iconUrl ?? null,
-        sourceType: recipe.sourceType ?? "helm",
-        chartUrl: recipe.chartUrl,
-        chartVersion: recipe.chartVersion ?? null,
-        configSchema:
-          (recipe.configSchema as unknown as Prisma.InputJsonValue) ?? {},
-        secretsSchema:
-          (recipe.secretsSchema as unknown as Prisma.InputJsonValue) ?? {},
-        valuesTemplate: recipe.valuesTemplate ?? "",
-        dependencies:
-          (recipe.dependencies as unknown as Prisma.InputJsonValue) ?? [],
-        ingressConfig:
-          (recipe.ingressConfig as unknown as Prisma.InputJsonValue) ?? {},
-        resourceDefaults:
-          (recipe.resourceDefaults as unknown as Prisma.InputJsonValue) ?? {},
-        resourceLimits:
-          (recipe.resourceLimits as unknown as Prisma.InputJsonValue) ?? {},
-        healthCheck:
-          (recipe.healthCheck as unknown as Prisma.InputJsonValue) ?? {},
-        aiHints:
-          (recipe.aiHints as unknown as Prisma.InputJsonValue) ?? {},
-        tier: "OFFICIAL",
-        status: "PUBLISHED",
+        featured: recipe.featured ?? false,
       },
     });
 
     // Generate embedding if OpenAI key is available
-    if (hasOpenAiKey && recipe.aiHints) {
+    if (hasOpenAiKey) {
       try {
         const text = buildEmbeddingText({
           displayName: recipe.displayName,
           description: recipe.description,
           category: recipe.category,
-          tags: recipe.tags ?? [],
+          tags: recipe.tags,
           aiHints: recipe.aiHints as AiHints,
         });
 
@@ -122,11 +72,9 @@ async function main() {
     }
   }
 
-  const count = await prisma.recipe.count({
-    where: { status: "PUBLISHED" },
-  });
+  const count = await prisma.recipe.count();
 
-  console.log(`\n✅ Seed complete. ${count} published recipes in catalog.`);
+  console.log(`\n✅ Seed complete. ${count} recipes in catalog.`);
 }
 
 main()

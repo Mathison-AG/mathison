@@ -3,12 +3,15 @@
  *
  * Generates crypto-random passwords and manages K8s Secret resources
  * for deployment credentials.
+ *
+ * V2: generateSecretsFromDefinition() works with typed SecretDefinition
+ * from the recipe system. Legacy generateSecrets() retained for compatibility.
  */
 
 import * as crypto from "node:crypto";
 import * as k8s from "@kubernetes/client-node";
 
-import type { SecretsSchema } from "@/types/recipe";
+import type { SecretDefinition } from "@/recipes/_base/types";
 
 // ─── Password generation ──────────────────────────────────
 
@@ -23,28 +26,28 @@ export function generatePassword(length = 24): string {
   return Array.from(bytes, (b) => PASSWORD_CHARS[b % PASSWORD_CHARS.length]).join("");
 }
 
-// ─── Secret schema processing ─────────────────────────────
+// ─── Secret generation from typed recipe definitions ──────
 
 /**
- * Generate secrets based on a recipe's secrets schema.
+ * Generate secrets from a recipe's typed SecretDefinition map.
  * Reuses existing secrets if provided (for upgrades).
  */
-export function generateSecrets(
-  secretsSchema: SecretsSchema,
+export function generateSecretsFromDefinition(
+  secretDefs: Record<string, SecretDefinition>,
   existingSecrets?: Record<string, string>
 ): Record<string, string> {
   const secrets: Record<string, string> = {};
 
-  for (const [key, field] of Object.entries(secretsSchema)) {
+  for (const [key, def] of Object.entries(secretDefs)) {
     // Reuse existing secret if available
     if (existingSecrets?.[key]) {
       secrets[key] = existingSecrets[key];
       continue;
     }
 
-    // Auto-generate if schema says so
-    if (field.generate) {
-      secrets[key] = generatePassword(field.length || 24);
+    // Auto-generate if definition says so
+    if (def.generate) {
+      secrets[key] = generatePassword(def.length || 24);
     }
   }
 

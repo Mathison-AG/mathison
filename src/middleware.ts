@@ -11,7 +11,8 @@ export const config = {
     // Run middleware on all routes EXCEPT:
     // - /api/auth/* (Auth.js endpoints)
     // - /_next/* (Next.js internals)
-    // - /favicon.ico, /robots.txt, etc.
-    "/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
+    // - /icons/* (public static icons)
+    // - /favicon.ico, /robots.txt, static files with extensions
+    "/((?!api/auth|_next/static|_next/image|icons|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

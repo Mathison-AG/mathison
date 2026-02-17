@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
 import { initiateRemoval } from "@/lib/deployer/engine";
+import { enrichDeploymentRecipe } from "@/lib/catalog/metadata";
+import { getDataPortabilityInfo } from "@/lib/deployer/data-export";
 import type { ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments/[id] ────────────────────────────
@@ -26,12 +28,7 @@ export async function GET(
       where: { id, tenantId: session.user.tenantId },
       include: {
         recipe: {
-          select: {
-            slug: true,
-            displayName: true,
-            iconUrl: true,
-            category: true,
-          },
+          select: { slug: true },
         },
       },
     });
@@ -49,18 +46,26 @@ export async function GET(
     if (deployment.status === "RUNNING" || deployment.status === "DEPLOYING") {
       try {
         [resources, ports] = await Promise.all([
-          getReleaseResources(deployment.namespace, deployment.helmRelease),
-          getReleaseServicePorts(deployment.namespace, deployment.helmRelease),
+          getReleaseResources(deployment.namespace, deployment.name),
+          getReleaseServicePorts(deployment.namespace, deployment.name),
         ]);
       } catch (err) {
         console.warn(
-          `[GET /api/deployments/[id]] Failed to fetch K8s data for ${deployment.helmRelease}:`,
+          `[GET /api/deployments/[id]] Failed to fetch K8s data for ${deployment.name}:`,
           err
         );
       }
     }
 
-    return NextResponse.json({ ...deployment, resources, ports });
+    // Get data portability info from the recipe
+    const dataPortability = getDataPortabilityInfo(deployment.recipe.slug);
+
+    return NextResponse.json({
+      ...enrichDeploymentRecipe(deployment),
+      resources,
+      ports,
+      dataPortability,
+    });
   } catch (error) {
     console.error("[GET /api/deployments/[id]]", error);
     return NextResponse.json(

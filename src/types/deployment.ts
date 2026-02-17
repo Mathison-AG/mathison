@@ -28,12 +28,12 @@ export interface Deployment {
   id: string;
   name: string;
   namespace: string;
-  helmRelease: string;
   status: DeploymentStatus;
   url: string | null;
-  chartVersion: string | null;
+  localPort: number | null;
+  servicePort: number | null;
+  serviceName: string | null;
   appVersion: string | null;
-  revision: number;
   errorMessage: string | null;
   config: Record<string, unknown>;
   dependsOn: string[];
@@ -44,9 +44,19 @@ export interface Deployment {
     displayName: string;
     iconUrl: string | null;
     category: string;
+    hasWebUI: boolean;
   };
   createdAt: string;
   updatedAt: string;
+}
+
+// ─── Data portability info ────────────────────────────────
+
+export interface DataPortabilityInfo {
+  canExport: boolean;
+  canImport: boolean;
+  exportDescription: string | null;
+  importDescription: string | null;
 }
 
 // ─── Deployment detail (extended) ─────────────────────────
@@ -55,6 +65,7 @@ export interface DeploymentDetail extends Deployment {
   recipeId: string;
   recipeVersion: number;
   secretsRef: string | null;
+  dataPortability?: DataPortabilityInfo;
 }
 
 // ─── Resource helpers ─────────────────────────────────────

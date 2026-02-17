@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import { searchRecipes } from "@/lib/catalog/service";
 
 // ─── POST /api/catalog/search ────────────────────────────
-// Semantic search over the recipe catalog
+// Semantic search over the recipe catalog (pgvector embeddings + registry metadata)
 
 const searchSchema = z.object({
   query: z.string().min(1).max(500),
