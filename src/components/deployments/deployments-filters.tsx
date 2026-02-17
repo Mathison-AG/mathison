@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 const statuses = [
   { value: "all", label: "All" },
   { value: "RUNNING", label: "Running" },
-  { value: "DEPLOYING", label: "Deploying" },
+  { value: "DEPLOYING", label: "Installing" },
   { value: "PENDING", label: "Pending" },
   { value: "FAILED", label: "Failed" },
   { value: "STOPPED", label: "Stopped" }

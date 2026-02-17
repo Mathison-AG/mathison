@@ -243,8 +243,8 @@ export function WorkspaceManager() {
                       </AlertDialogTitle>
                       <AlertDialogDescription>
                         This will permanently delete the workspace and all{" "}
-                        <strong>{ws.deploymentCount} service{ws.deploymentCount !== 1 ? "s" : ""}</strong>{" "}
-                        deployed in it. This action cannot be undone.
+                        <strong>{ws.deploymentCount} app{ws.deploymentCount !== 1 ? "s" : ""}</strong>{" "}
+                        installed in it. This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

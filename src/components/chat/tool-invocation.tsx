@@ -66,54 +66,54 @@ const TOOL_META: Record<
   { label: string; icon: React.ElementType; pendingLabel: string }
 > = {
   searchCatalog: {
-    label: "Catalog Search",
+    label: "Searching Apps",
     icon: Search,
-    pendingLabel: "Searching catalog...",
+    pendingLabel: "Searching apps...",
   },
   getRecipe: {
-    label: "Service Details",
+    label: "App Info",
     icon: Package,
-    pendingLabel: "Loading service details...",
+    pendingLabel: "Loading app details...",
   },
   deployService: {
-    label: "Deploy Service",
+    label: "Installing App",
     icon: Upload,
-    pendingLabel: "Deploying service...",
+    pendingLabel: "Installing app...",
   },
   getStackStatus: {
-    label: "Stack Status",
+    label: "App Status",
     icon: Server,
-    pendingLabel: "Checking your services...",
+    pendingLabel: "Checking your apps...",
   },
   getServiceDetail: {
-    label: "Service Details",
+    label: "App Details",
     icon: Settings,
-    pendingLabel: "Loading service details...",
+    pendingLabel: "Loading app details...",
   },
   getServiceLogs: {
-    label: "Service Logs",
+    label: "App Logs",
     icon: FileText,
     pendingLabel: "Fetching logs...",
   },
   updateService: {
-    label: "Update Service",
+    label: "Updating App",
     icon: Settings,
-    pendingLabel: "Updating service...",
+    pendingLabel: "Updating app...",
   },
   removeService: {
-    label: "Remove Service",
+    label: "Removing App",
     icon: Trash2,
-    pendingLabel: "Removing service...",
+    pendingLabel: "Removing app...",
   },
   createRecipe: {
-    label: "Create Recipe",
+    label: "Adding App",
     icon: Package,
-    pendingLabel: "Creating recipe...",
+    pendingLabel: "Adding app...",
   },
   searchHelmCharts: {
-    label: "Package Search",
+    label: "Finding Apps",
     icon: ExternalLink,
-    pendingLabel: "Searching packages...",
+    pendingLabel: "Searching for apps...",
   },
 };
 
@@ -611,7 +611,7 @@ function UpdateResult({ output }: { output: unknown }) {
   return (
     <div className="flex items-center gap-2">
       <CheckCircle2 className="size-3.5 text-green-500" />
-      <span>{data.message ?? "Service updated."}</span>
+      <span>{data.message ?? "App updated."}</span>
     </div>
   );
 }
@@ -638,7 +638,7 @@ function RemoveResult({ output }: { output: unknown }) {
   return (
     <div className="flex items-center gap-2">
       <Trash2 className="size-3.5 text-muted-foreground" />
-      <span>{data.message ?? "Service removed."}</span>
+      <span>{data.message ?? "App removed."}</span>
     </div>
   );
 }

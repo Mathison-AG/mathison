@@ -93,10 +93,10 @@ export function ChatInput() {
 // ─── Suggested prompts (for empty state) ─────────────────
 
 const SUGGESTIONS = [
-  "What services can I deploy?",
+  "What apps can I install?",
   "Set up a PostgreSQL database",
-  "Deploy n8n with a database",
-  "What's running in my workspace?",
+  "Install n8n with a database",
+  "What apps do I have running?",
 ];
 
 interface SuggestedPromptsProps {

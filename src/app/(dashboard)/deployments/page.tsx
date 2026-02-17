@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Rocket } from "lucide-react";
+import { AppWindow } from "lucide-react";
 
 import { useDeployments } from "@/hooks/use-deployments";
 import { DeploymentCard } from "@/components/deployments/deployment-card";
@@ -23,11 +23,11 @@ export default function DeploymentsPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Rocket className="size-6 text-muted-foreground" />
+        <AppWindow className="size-6 text-muted-foreground" />
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Deployments</h2>
+          <h2 className="text-2xl font-bold tracking-tight">My Apps</h2>
           <p className="text-muted-foreground">
-            Monitor and manage your running services.
+            Monitor and manage your installed apps.
           </p>
         </div>
       </div>
@@ -55,10 +55,10 @@ export default function DeploymentsPage() {
       ) : !deployments || deployments.length === 0 ? (
         <div className="flex min-h-[300px] items-center justify-center rounded-lg border border-dashed">
           <div className="text-center space-y-2">
-            <Rocket className="size-8 text-muted-foreground mx-auto" />
-            <p className="text-sm font-medium">No deployments yet</p>
+            <AppWindow className="size-8 text-muted-foreground mx-auto" />
+            <p className="text-sm font-medium">No apps installed yet</p>
             <p className="text-sm text-muted-foreground">
-              Deploy a service from the catalog or use the chat assistant.
+              Browse the App Store to install your first app.
             </p>
           </div>
         </div>

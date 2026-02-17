@@ -454,7 +454,8 @@ ingress:
     whenToSuggest:
       "User needs workflow automation, API integration, task scheduling, Zapier/Make alternative, or wants to connect multiple services together",
     pairsWellWith: ["postgresql", "redis"]
-  }
+  },
+  featured: true
 };
 
 // ─── Uptime Kuma ─────────────────────────────────────────
@@ -587,7 +588,8 @@ ingress:
     whenToSuggest:
       "User needs uptime monitoring, health checks, status page, alerting for downtime, or wants to monitor services and endpoints",
     pairsWellWith: ["postgresql", "n8n"]
-  }
+  },
+  featured: true
 };
 
 // ─── MinIO ───────────────────────────────────────────────
@@ -741,7 +743,8 @@ apiIngress:
     whenToSuggest:
       "User needs file storage, object storage, S3-compatible storage, backup storage, media storage, or artifact storage",
     pairsWellWith: ["postgresql", "n8n"]
-  }
+  },
+  featured: true
 };
 
 // ─── Export all seed recipes ─────────────────────────────

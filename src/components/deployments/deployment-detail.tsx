@@ -97,7 +97,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Failed to remove service");
+        alert(data.error || "Failed to remove app");
         setIsDeleting(false);
         return;
       }
@@ -107,7 +107,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
       await queryClient.invalidateQueries({ queryKey: ["stack"] });
       router.push("/deployments");
     } catch {
-      alert("Failed to remove service");
+      alert("Failed to remove app");
       setIsDeleting(false);
     }
   }
@@ -120,7 +120,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="size-4" />
-        Back to deployments
+        Back to My Apps
       </Link>
 
       {/* Header */}
@@ -182,12 +182,12 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Remove service?</AlertDialogTitle>
+                <AlertDialogTitle>Remove app?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This will permanently remove{" "}
                   <strong>{deployment.name}</strong> (
                   {deployment.recipe.displayName}). All data associated with
-                  this service will be lost. This action cannot be undone.
+                  this app will be lost. This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -225,7 +225,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
               <h2 className="font-semibold">Details</h2>
               <div className="space-y-3 text-sm">
                 <DetailRow
-                  label="Service"
+                  label="App"
                   value={deployment.recipe.displayName}
                 />
                 <DetailRow
@@ -242,7 +242,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
                 )}
                 {deployment.chartVersion && (
                   <DetailRow
-                    label="Chart"
+                    label="Template"
                     value={deployment.chartVersion}
                   />
                 )}

@@ -6,9 +6,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
-  LayoutDashboard,
-  Grid3X3,
-  Rocket,
+  Store,
+  AppWindow,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -40,9 +39,8 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/catalog", label: "Catalog", icon: Grid3X3 },
-  { href: "/deployments", label: "Deployments", icon: Rocket },
+  { href: "/", label: "App Store", icon: Store },
+  { href: "/deployments", label: "My Apps", icon: AppWindow },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

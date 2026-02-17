@@ -4,13 +4,13 @@ import { use } from "react";
 import { Loader2 } from "lucide-react";
 
 import { useRecipe } from "@/hooks/use-catalog";
-import { RecipeDetail } from "@/components/catalog/recipe-detail";
+import { AppDetail } from "@/components/store/app-detail";
 
-interface RecipePageProps {
+interface AppPageProps {
   params: Promise<{ slug: string }>;
 }
 
-export default function RecipePage({ params }: RecipePageProps) {
+export default function AppPage({ params }: AppPageProps) {
   const { slug } = use(params);
   const { data: recipe, isLoading, error } = useRecipe(slug);
 
@@ -25,10 +25,10 @@ export default function RecipePage({ params }: RecipePageProps) {
   if (error || !recipe) {
     return (
       <div className="flex min-h-[400px] items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-sm font-medium">Service not found</p>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium">App not found</p>
           <p className="text-sm text-muted-foreground">
-            The service you&apos;re looking for doesn&apos;t exist.
+            The app you&apos;re looking for doesn&apos;t exist.
           </p>
         </div>
       </div>
@@ -37,7 +37,7 @@ export default function RecipePage({ params }: RecipePageProps) {
 
   return (
     <div className="p-6">
-      <RecipeDetail recipe={recipe} />
+      <AppDetail recipe={recipe} />
     </div>
   );
 }
