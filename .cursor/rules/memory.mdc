@@ -97,6 +97,18 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Pod label selectors**: Worker and `getReleasePodStatus` try `app.kubernetes.io/instance=<releaseName>` first (Bitnami/standard), then fall back to `release=<releaseName>` (Helm convention used by community charts like official MinIO).
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
+## Typed Recipe System (`src/recipes/`)
+
+- **RecipeDefinition<TConfig>**: Core interface — Zod config schema + `build()` producing `KubernetesResource[]`.
+- **BuildContext<TConfig>**: Passed to `build()` — typed config, secrets, deps (ConnectionInfo), name, namespace, ingress.
+- **Archetypes**: `database()`, `cache()`, `webApp()`, `objectStore()` — higher-level functions that generate full RecipeDefinitions from descriptors.
+- **Builders**: Thin wrappers producing typed K8s objects (`statefulSet`, `deployment`, `service`, `secret`, `persistentVolumeClaim`, `ingress`, `configMap`). Standard labels (`app.kubernetes.io/name`, `instance`, `managed-by: mathison`).
+- **Server-Side Apply**: `applyResources()` uses K8s patch API with `fieldManager: "mathison"`, `force: true`, content type `"application/apply-patch+yaml"`.
+- **secret() helper**: Use `secret(ctx.secrets, "key")` to safely access secrets (avoids `noUncheckedIndexedAccess` returning `string | undefined`).
+- **Registry**: `getRecipeDefinition(slug)`, `listRecipeDefinitions()`, `requireRecipeDefinition(slug)` from `src/recipes/registry.ts`.
+- **Recipe → Archetype mapping**: postgresql→database, redis→cache, uptime-kuma→webApp, minio→objectStore, n8n→custom build.
+- **Old Helm engine still works**: `src/lib/deployer/` + `src/lib/catalog/seed-data.ts` unchanged. Recipe system runs in parallel until Task 20 swaps engines.
+
 ## BullMQ & Deployment Engine
 
 - Queue name: `"deployments"`. Job names from `JOB_NAMES` enum: DEPLOY, UNDEPLOY, UPGRADE, HEALTH_CHECK.

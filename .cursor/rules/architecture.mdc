@@ -56,6 +56,15 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── ui/                  # shadcn/ui primitives (button, card, sheet, etc.)
 │   │   └── providers.tsx        # Client providers (theme, query, tooltip)
 │   │
+│   ├── recipes/                 # Typed recipe system (replaces Helm values templates)
+│   │   ├── _base/               # Foundation: types, builders, archetypes, SSA apply
+│   │   ├── postgresql/          # database() archetype
+│   │   ├── redis/               # cache() archetype
+│   │   ├── uptime-kuma/         # webApp() archetype
+│   │   ├── minio/               # objectStore() archetype
+│   │   ├── n8n/                 # Custom build() (dependency wiring, worker mode)
+│   │   └── registry.ts          # getRecipeDefinition(), listRecipeDefinitions()
+│   │
 │   ├── lib/
 │   │   ├── agent/               # AI: provider factory, system prompt, 10 tools
 │   │   ├── catalog/             # Recipes: CRUD service, embeddings, seed data
