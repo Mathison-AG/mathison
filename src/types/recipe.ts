@@ -64,6 +64,7 @@ export interface IngressConfig {
   hostnameTemplate?: string; // e.g. "n8n-{tenant}.{domain}"
   port?: number;
   path?: string;
+  serviceNameSuffix?: string; // e.g. "-postgresql", "-redis-master", "" (empty = same as release)
 }
 
 // ─── AI Hints ────────────────────────────────────────────
@@ -121,6 +122,7 @@ export interface Recipe {
   documentationUrl: string | null;
   installCount: number;
   featured: boolean;
+  hasWebUI: boolean;
   // Metadata
   tier: RecipeTier;
   status: RecipeStatus;
@@ -164,6 +166,7 @@ export interface RecipeCreateInput {
   websiteUrl?: string;
   documentationUrl?: string;
   featured?: boolean;
+  hasWebUI?: boolean;
 }
 
 export interface RecipeUpdateInput {

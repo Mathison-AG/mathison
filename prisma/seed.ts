@@ -64,6 +64,7 @@ async function main() {
       websiteUrl: recipe.websiteUrl ?? null,
       documentationUrl: recipe.documentationUrl ?? null,
       featured: recipe.featured ?? false,
+      hasWebUI: recipe.hasWebUI ?? false,
       tier: "OFFICIAL" as const,
       status: "PUBLISHED" as const,
     };

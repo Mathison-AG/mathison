@@ -31,6 +31,9 @@ export interface Deployment {
   helmRelease: string;
   status: DeploymentStatus;
   url: string | null;
+  localPort: number | null;
+  servicePort: number | null;
+  serviceName: string | null;
   chartVersion: string | null;
   appVersion: string | null;
   revision: number;
@@ -44,6 +47,7 @@ export interface Deployment {
     displayName: string;
     iconUrl: string | null;
     category: string;
+    hasWebUI: boolean;
   };
   createdAt: string;
   updatedAt: string;

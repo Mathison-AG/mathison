@@ -44,6 +44,7 @@ function toRecipe(row: Record<string, unknown>): Recipe {
     documentationUrl: (row.documentationUrl as string) ?? null,
     installCount: (row.installCount as number) ?? 0,
     featured: (row.featured as boolean) ?? false,
+    hasWebUI: (row.hasWebUI as boolean) ?? false,
     tier: row.tier as Recipe["tier"],
     status: row.status as Recipe["status"],
     version: row.version as number,

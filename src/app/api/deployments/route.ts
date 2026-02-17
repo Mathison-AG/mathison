@@ -39,6 +39,7 @@ export async function GET(req: Request) {
             displayName: true,
             iconUrl: true,
             category: true,
+            hasWebUI: true,
           },
         },
       },

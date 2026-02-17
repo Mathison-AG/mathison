@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, MoreHorizontal, Settings, RotateCw, Trash2 } from "lucide-react";
+import { ExternalLink, MoreHorizontal, Settings, RotateCw, Trash2, Database } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StatusIndicator } from "./status-indicator";
 import { RemoveDialog } from "./remove-dialog";
+import { OpenButton } from "./open-button";
 import { useRemoveApp, useRestartApp } from "@/hooks/use-my-apps";
 
 import type { Deployment } from "@/types/deployment";
@@ -35,7 +36,6 @@ export function MyAppCard({ app }: MyAppCardProps) {
   const restartApp = useRestartApp();
 
   const iconSrc = app.recipe.iconUrl || `/icons/${app.recipe.slug}.svg`;
-  const hasUrl = !!app.url;
   const isRunning = app.status === "RUNNING";
   const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(app.status);
 
@@ -88,19 +88,15 @@ export function MyAppCard({ app }: MyAppCardProps) {
 
           {/* Actions */}
           <div className="flex items-center gap-2 w-full mt-auto pt-1">
-            {hasUrl && isRunning ? (
-              <Button
-                variant="default"
-                size="sm"
-                className="flex-1 gap-1.5"
-                asChild
-                onClick={(e) => e.stopPropagation()}
-              >
-                <a href={app.url!} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="size-3.5" />
-                  Open
-                </a>
-              </Button>
+            {isRunning ? (
+              <OpenButton
+                deploymentId={app.id}
+                appName={app.recipe.displayName}
+                url={app.url}
+                status={app.status}
+                hasWebUI={app.recipe.hasWebUI}
+                className="flex-1"
+              />
             ) : (
               <Button
                 variant="outline"
@@ -133,12 +129,22 @@ export function MyAppCard({ app }: MyAppCardProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                {hasUrl && isRunning && (
+                {app.recipe.hasWebUI && app.url && isRunning && (
                   <DropdownMenuItem asChild>
-                    <a href={app.url!} target="_blank" rel="noopener noreferrer">
+                    <a href={app.url} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 size-4" />
                       Open
                     </a>
+                  </DropdownMenuItem>
+                )}
+                {!app.recipe.hasWebUI && isRunning && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.preventDefault();
+                    }}
+                  >
+                    <Database className="mr-2 size-4" />
+                    Connection Info
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem

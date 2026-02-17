@@ -137,7 +137,8 @@ primary:
     accessModes:
       - ReadWriteOnce`,
   dependencies: [],
-  ingressConfig: { enabled: false },
+  hasWebUI: false,
+  ingressConfig: { enabled: false, port: 5432, serviceNameSuffix: "-postgresql" },
   resourceDefaults: { cpu: "50m", memory: "128Mi" },
   resourceLimits: { cpu: "250m", memory: "256Mi" },
   healthCheck: {
@@ -271,7 +272,8 @@ master:
 replica:
   replicaCount: 0`,
   dependencies: [],
-  ingressConfig: { enabled: false },
+  hasWebUI: false,
+  ingressConfig: { enabled: false, port: 6379, serviceNameSuffix: "-redis-master" },
   resourceDefaults: { cpu: "25m", memory: "64Mi" },
   resourceLimits: { cpu: "100m", memory: "128Mi" },
   healthCheck: {
@@ -434,11 +436,13 @@ ingress:
       config: { database: "n8n", username: "n8n", storage_size: "8Gi" }
     }
   ],
+  hasWebUI: true,
   ingressConfig: {
     enabled: true,
     hostnameTemplate: "n8n-{tenant}.{domain}",
     port: 5678,
-    path: "/"
+    path: "/",
+    serviceNameSuffix: ""
   },
   resourceDefaults: { cpu: "50m", memory: "256Mi" },
   resourceLimits: { cpu: "500m", memory: "512Mi" },
@@ -568,11 +572,13 @@ ingress:
   enabled: false
 {{/if}}`,
   dependencies: [],
+  hasWebUI: true,
   ingressConfig: {
     enabled: true,
     hostnameTemplate: "status-{tenant}.{domain}",
     port: 3001,
-    path: "/"
+    path: "/",
+    serviceNameSuffix: "-uptime-kuma"
   },
   resourceDefaults: { cpu: "25m", memory: "64Mi" },
   resourceLimits: { cpu: "150m", memory: "200Mi" },
@@ -733,11 +739,13 @@ consoleIngress:
   enabled: false
 {{/if}}`,
   dependencies: [],
+  hasWebUI: true,
   ingressConfig: {
     enabled: true,
     hostnameTemplate: "minio-{tenant}.{domain}",
     port: 9001,
-    path: "/"
+    path: "/",
+    serviceNameSuffix: "-console"
   },
   resourceDefaults: { cpu: "50m", memory: "128Mi" },
   resourceLimits: { cpu: "500m", memory: "512Mi" },

@@ -117,6 +117,7 @@ model Recipe {
   documentationUrl  String?         @map("documentation_url")
   installCount      Int             @default(0) @map("install_count")
   featured          Boolean         @default(false)
+  hasWebUI          Boolean         @default(false) @map("has_web_ui")
 
   // AI
   aiHints          Json            @default("{}") @map("ai_hints")
@@ -197,6 +198,9 @@ model Deployment {
   secretsRef    String?          @map("secrets_ref")
   status        DeploymentStatus @default(PENDING)
   url           String?
+  localPort     Int?             @map("local_port")     // Port-forward local port
+  servicePort   Int?             @map("service_port")   // K8s service port
+  serviceName   String?          @map("service_name")   // K8s service name
   chartVersion  String?          @map("chart_version")  // e.g. "postgresql-16.2.5"
   appVersion    String?          @map("app_version")    // e.g. "16.2.0"
   revision      Int              @default(1)            // Helm revision number

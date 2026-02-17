@@ -3,6 +3,7 @@
  *
  * Separate process that consumes deployment jobs from the queue.
  * Executes Helm operations, monitors pod readiness, and updates DB status.
+ * Manages port-forwarding for local/kind clusters.
  *
  * Imported dynamically by index.ts AFTER env vars are loaded.
  */
@@ -19,6 +20,13 @@ import {
 } from "../src/lib/cluster/helm";
 import { waitForReady, listPods, getIngressUrl } from "../src/lib/cluster/kubernetes";
 import { deleteK8sSecret } from "../src/lib/deployer/secrets";
+import { assignPort } from "../src/lib/cluster/port-manager";
+import {
+  startPortForward,
+  stopPortForward,
+  stopAllPortForwards,
+  isPortForwardActive,
+} from "../src/lib/cluster/port-forward";
 import { prisma } from "../src/lib/db";
 
 import type {
@@ -95,6 +103,84 @@ async function waitForReleasePods(
     `[worker] No pods found with '${standardLabel}', trying '${helmLabel}'`
   );
   return waitForReady(namespace, helmLabel, timeoutSeconds);
+}
+
+// ─── Service discovery ────────────────────────────────────
+
+/**
+ * Discover the primary K8s service for a deployment and set up port-forwarding.
+ * Looks up the recipe's ingress config to find the service name suffix and port,
+ * then assigns a local port and starts a port-forward.
+ */
+async function setupPortForward(
+  deploymentId: string,
+  helmRelease: string,
+  namespace: string
+): Promise<string | null> {
+  try {
+    // Look up the recipe info for service discovery
+    const deployment = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      select: {
+        recipe: {
+          select: {
+            ingressConfig: true,
+            healthCheck: true,
+          },
+        },
+      },
+    });
+
+    if (!deployment) return null;
+
+    const ingressConfig = deployment.recipe.ingressConfig as {
+      port?: number;
+      serviceNameSuffix?: string;
+    } | null;
+    const healthCheck = deployment.recipe.healthCheck as {
+      port?: number;
+    } | null;
+
+    // Determine the service port (prefer ingressConfig.port, fall back to healthCheck.port)
+    const servicePort = ingressConfig?.port || healthCheck?.port;
+    if (!servicePort) {
+      console.warn(`[worker] No service port found for deployment ${deploymentId}`);
+      return null;
+    }
+
+    // Determine the service name
+    const suffix = ingressConfig?.serviceNameSuffix ?? "";
+    const serviceName = `${helmRelease}${suffix}`;
+
+    // Assign a local port
+    const localPort = await assignPort(deploymentId);
+
+    // Store service info on the deployment
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: {
+        serviceName,
+        servicePort,
+      },
+    });
+
+    // Start port-forward
+    const { url } = await startPortForward({
+      deploymentId,
+      namespace,
+      serviceName,
+      servicePort,
+      localPort,
+    });
+
+    return url;
+  } catch (err) {
+    console.error(
+      `[worker] Failed to setup port-forward for ${deploymentId}:`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
 }
 
 // ─── Job handlers ─────────────────────────────────────────
@@ -190,11 +276,18 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     };
 
     if (ready) {
+      // 7. Set up port-forwarding for local access
+      const portForwardUrl = await setupPortForward(
+        deploymentId,
+        helmRelease,
+        tenantNamespace
+      );
+
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
-          url,
+          url: portForwardUrl || url,
           errorMessage: null,
           ...versionData,
         }
@@ -236,6 +329,9 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
   const { deploymentId, helmRelease, tenantNamespace } = job.data;
 
   console.log(`[worker] Undeploy: ${helmRelease} from ${tenantNamespace}`);
+
+  // Stop port-forward before anything else
+  await stopPortForward(deploymentId);
 
   // Check if deployment record still exists (idempotent — may have been deleted already)
   const exists = await prisma.deployment.findUnique({
@@ -332,6 +428,9 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     return;
   }
 
+  // Stop existing port-forward during upgrade
+  await stopPortForward(deploymentId);
+
   try {
     // 1. Update status → DEPLOYING
     await prisma.deployment.update({
@@ -398,11 +497,18 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     };
 
     if (ready) {
+      // 7. Re-establish port-forwarding
+      const portForwardUrl = await setupPortForward(
+        deploymentId,
+        helmRelease,
+        tenantNamespace
+      );
+
       await prisma.deployment.update({
         where: { id: deploymentId },
         data: {
           status: "RUNNING",
-          url,
+          url: portForwardUrl || url,
           errorMessage: null,
           ...versionData,
         }
@@ -485,6 +591,59 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
   }
 }
 
+// ─── Port-forward health check ────────────────────────────
+
+/**
+ * Periodically check that port-forwards are alive.
+ * Restarts any that have died, and starts port-forwards for
+ * RUNNING deployments that don't have one yet.
+ */
+async function checkPortForwards(): Promise<void> {
+  try {
+    // Find all RUNNING deployments that should have port-forwards
+    const runningDeployments = await prisma.deployment.findMany({
+      where: {
+        status: "RUNNING",
+        localPort: { not: null },
+        serviceName: { not: null },
+        servicePort: { not: null },
+      },
+      select: {
+        id: true,
+        localPort: true,
+        serviceName: true,
+        servicePort: true,
+        namespace: true,
+        helmRelease: true,
+      },
+    });
+
+    for (const dep of runningDeployments) {
+      if (!isPortForwardActive(dep.id) && dep.localPort && dep.serviceName && dep.servicePort) {
+        console.log(
+          `[worker] Port-forward not active for ${dep.serviceName}, restarting...`
+        );
+        try {
+          await startPortForward({
+            deploymentId: dep.id,
+            namespace: dep.namespace,
+            serviceName: dep.serviceName,
+            servicePort: dep.servicePort,
+            localPort: dep.localPort,
+          });
+        } catch (err) {
+          console.warn(
+            `[worker] Failed to restart port-forward for ${dep.serviceName}:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[worker] Port-forward health check error:", err);
+  }
+}
+
 // ─── Worker setup ─────────────────────────────────────────
 
 export function startWorker(): void {
@@ -526,6 +685,13 @@ export function startWorker(): void {
     }
   );
 
+  // ─── Port-forward health check interval ─────────────────
+
+  const portForwardCheckInterval = setInterval(checkPortForwards, 60_000);
+
+  // Run an initial port-forward check after a short delay (restore on worker restart)
+  setTimeout(checkPortForwards, 5_000);
+
   // ─── Event handlers ───────────────────────────────────────
 
   worker.on("completed", (job) => {
@@ -547,6 +713,8 @@ export function startWorker(): void {
 
   async function shutdown(signal: string): Promise<void> {
     console.log(`[worker] Received ${signal}, shutting down gracefully...`);
+    clearInterval(portForwardCheckInterval);
+    await stopAllPortForwards();
     await worker.close();
     console.log("[worker] Shutdown complete");
     process.exit(0);
@@ -561,6 +729,7 @@ export function startWorker(): void {
   console.log(" Mathison Worker started");
   console.log(` Queue: deployments`);
   console.log(` Concurrency: 2`);
+  console.log(` Port-forward check: every 60s`);
   console.log(
     ` DATABASE_URL: ${process.env.DATABASE_URL ? "✓ set" : "✗ MISSING"}`
   );

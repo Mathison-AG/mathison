@@ -79,6 +79,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+    ports:
+      - "10000-10049:10000-10049"  # Port-forward range for app access
     volumes:
       - .:/app
       - node_modules:/app/node_modules

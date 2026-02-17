@@ -137,6 +137,16 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Detail page**: Server component fetches `gettingStarted` from recipe, passes to client `AppDetail` component.
 - **Status mapping**: PENDING/DEPLOYING → "Starting..." (yellow pulse), RUNNING → "Running" (green), FAILED → "Needs attention" (red), STOPPED → "Stopped" (gray), DELETING → "Removing..." (yellow pulse).
 
+## App Access & Port-Forwarding
+
+- **Port-forward range**: 10000–10999 (local dev). Ports assigned from DB, tracked on `deployment.localPort`.
+- **Port-forward lifecycle**: Worker starts on RUNNING, stops on undeploy/upgrade, health check restarts dead forwards every 60s.
+- **Service discovery**: Recipe's `ingressConfig.port` + `ingressConfig.serviceNameSuffix` determine K8s service name/port. Suffix: postgresql→`-postgresql`, redis→`-redis-master`, n8n→`""`, uptime-kuma→`-uptime-kuma`, minio→`-console`.
+- **hasWebUI**: Boolean on Recipe. Web UI apps (n8n, Uptime Kuma, MinIO) get "Open" button. Database apps (PostgreSQL, Redis) get "Connection Info" dialog.
+- **Connection info API**: `GET /api/deployments/[id]/access` reads K8s secrets + config, returns host/port/credentials/connectionString.
+- **Docker port mapping**: Worker container maps `10000-10049:10000-10049` for port-forward access from host.
+- **Port-forward process**: `kubectl port-forward svc/<name> <local>:<svc> -n <ns> --address 0.0.0.0` spawned via `child_process.spawn`.
+
 ## Frontend Patterns
 
 - **Font**: Inter (not Geist). CSS var `--font-sans`.

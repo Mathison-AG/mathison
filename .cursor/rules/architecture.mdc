@@ -49,7 +49,7 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── store/               # App Store: cards, grid, featured, install flow (modal, progress, success)
 │   │   ├── onboarding/          # Welcome categories, first-install celebration
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
-│   │   ├── my-apps/             # My Apps: app-card, app-grid, app-detail, remove-dialog, status-indicator
+│   │   ├── my-apps/             # My Apps: app-card, app-grid, app-detail, open-button, connection-info, remove-dialog, status-indicator
 │   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer (legacy)
 │   │   ├── layout/              # Dashboard shell, sidebar (workspace selector), header, chat panel
 │   │   ├── settings/            # Workspace manager component
@@ -108,12 +108,15 @@ ai-k8s/                          # Workspace root = Next.js app
 - **kubernetes.ts** — KubeConfig, namespace CRUD, pod status/logs, resource queries.
 - **helm.ts** — Helm CLI wrapper via `child_process.execFile`. Install, upgrade, uninstall, status.
 - **ingress.ts** — Ingress rule management.
+- **port-manager.ts** — DB-backed local port assignment (range 10000–10999) for port-forwarding.
+- **port-forward.ts** — kubectl port-forward child process management. Tracks PIDs, auto-restart on death.
 
 ### Background Worker (`worker/`)
 - Runs as separate process: `yarn worker` (= `tsx watch worker/index.ts`).
 - Processes BullMQ jobs from the `"deployments"` queue.
 - Job types: deploy, undeploy, upgrade, health_check.
 - Bootstrap pattern: `index.ts` loads dotenv first, then dynamic-imports `main.ts`.
+- **Port-forwarding**: Auto-starts port-forwards on RUNNING, stops on undeploy/upgrade. Health check loop every 60s restarts dead forwards. Graceful shutdown stops all forwards.
 
 ### Frontend Data Flow
 - **TanStack Query** for all client data fetching. Query keys: `["catalog"]`, `["deployments"]`, `["stack"]`.
@@ -133,9 +136,9 @@ ai-k8s/                          # Workspace root = Next.js app
 | Tenant | Multi-tenancy root. Has slug. Owns workspaces. |
 | User | Auth. Belongs to Tenant. Has role (ADMIN/USER), activeWorkspaceId. |
 | Workspace | Isolated environment. Belongs to Tenant. Maps to K8s namespace (`{tenantSlug}-{workspaceSlug}`). Has quota, status (ACTIVE/DELETING/DELETED). |
-| Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate |
+| Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate, hasWebUI |
 | RecipeVersion | Version history for recipes |
-| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. |
+| Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. Has localPort/servicePort/serviceName for port-forwarding. |
 | Stack | Groups of deployments (future use) |
 | Conversation | Chat thread. Belongs to User + Tenant |
 | Message | Chat message. Belongs to Conversation. Has role + content |
@@ -154,6 +157,7 @@ ai-k8s/                          # Workspace root = Next.js app
 | `/api/deployments` | GET | Protected | List deployments in active workspace |
 | `/api/deployments/[id]` | GET, DELETE | Protected | Deployment detail / remove |
 | `/api/deployments/[id]/logs` | GET | Protected | Pod logs |
+| `/api/deployments/[id]/access` | GET | Protected | Connection info (credentials, host, port) |
 | `/api/workspaces` | GET, POST | Protected | List / create workspaces |
 | `/api/workspaces/[id]` | GET, DELETE | Protected | Workspace detail / delete (+ all resources) |
 | `/api/workspaces/switch` | POST | Protected | Switch active workspace (sets cookie) |

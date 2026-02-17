@@ -31,6 +31,7 @@ export async function GET(
             displayName: true,
             iconUrl: true,
             category: true,
+            hasWebUI: true,
           },
         },
       },

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  ExternalLink,
   RotateCw,
   Trash2,
   Calendar,
@@ -21,6 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusIndicator } from "./status-indicator";
 import { RemoveDialog } from "./remove-dialog";
+import { OpenButton } from "./open-button";
+import { ConnectionInfoButton } from "./connection-info";
 import { useMyApp, useRemoveApp, useRestartApp } from "@/hooks/use-my-apps";
 
 // ─── Time formatting ─────────────────────────────────────
@@ -97,7 +98,6 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
   }
 
   const iconSrc = app.recipe.iconUrl || `/icons/${app.recipe.slug}.svg`;
-  const hasUrl = !!app.url;
   const isRunning = app.status === "RUNNING";
   const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(app.status);
 
@@ -154,14 +154,14 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {hasUrl && isRunning && (
-            <Button asChild>
-              <a href={app.url!} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="mr-2 size-4" />
-                Open
-              </a>
-            </Button>
-          )}
+          <OpenButton
+            deploymentId={app.id}
+            appName={app.recipe.displayName}
+            url={app.url}
+            status={app.status}
+            hasWebUI={app.recipe.hasWebUI}
+            size="default"
+          />
           <Button
             variant="outline"
             size="icon"
@@ -193,6 +193,31 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
           </div>
         </div>
       </div>
+
+      {/* Connection Info for non-web-UI apps */}
+      {!app.recipe.hasWebUI && isRunning && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Connection Details</h2>
+            <Card className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="font-medium">Access your {app.recipe.displayName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    View host, port, credentials, and connection string.
+                  </p>
+                </div>
+                <ConnectionInfoButton
+                  deploymentId={app.id}
+                  appName={app.recipe.displayName}
+                  variant="outline"
+                />
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
 
       {/* Getting Started */}
       {gettingStarted && (
