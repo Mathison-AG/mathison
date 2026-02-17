@@ -121,6 +121,16 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Installed detection**: Store page + detail page fetch deployments alongside catalog data. `installedSlugs` Set passed to cards.
 - **Install count**: Incremented in `initiateDeployment()` (fire-and-forget), not in the install API route.
 
+## My Apps Dashboard
+
+- **Route**: `/apps` (grid) + `/apps/[id]` (detail). Old `/deployments` routes redirect to `/apps`.
+- **Dependency filtering**: `useMyApps()` filters auto-deployed dependencies by checking which IDs appear in other deployments' `dependsOn` arrays.
+- **Query key**: `["my-apps"]` for list, `["my-apps", id]` for detail. Invalidated from install hook, chat provider, remove/restart mutations.
+- **Restart**: `POST /api/deployments/[id]/restart` wraps `initiateUpgrade()` with same config.
+- **Toast notifications**: Sonner (`sonner@2.0.7`). `<Toaster>` in providers.tsx. `toast.success()` / `toast.error()` for actions.
+- **Detail page**: Server component fetches `gettingStarted` from recipe, passes to client `AppDetail` component.
+- **Status mapping**: PENDING/DEPLOYING → "Starting..." (yellow pulse), RUNNING → "Running" (green), FAILED → "Needs attention" (red), STOPPED → "Stopped" (gray), DELETING → "Removing..." (yellow pulse).
+
 ## Frontend Patterns
 
 - **Font**: Inter (not Geist). CSS var `--font-sans`.

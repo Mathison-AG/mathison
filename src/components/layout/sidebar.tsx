@@ -40,7 +40,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
   { href: "/", label: "App Store", icon: Store },
-  { href: "/deployments", label: "My Apps", icon: AppWindow },
+  { href: "/apps", label: "My Apps", icon: AppWindow },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

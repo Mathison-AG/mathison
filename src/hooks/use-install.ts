@@ -135,6 +135,7 @@ export function useInstall(): UseInstallReturn {
             pollRef.current = null;
             setPhase("success");
             // Invalidate related queries
+            queryClient.invalidateQueries({ queryKey: ["my-apps"] });
             queryClient.invalidateQueries({ queryKey: ["deployments"] });
             queryClient.invalidateQueries({ queryKey: ["catalog"] });
             queryClient.invalidateQueries({ queryKey: ["stack"] });
@@ -143,6 +144,7 @@ export function useInstall(): UseInstallReturn {
             pollRef.current = null;
             setError(sanitizeError(data.errorMessage));
             setPhase("error");
+            queryClient.invalidateQueries({ queryKey: ["my-apps"] });
             queryClient.invalidateQueries({ queryKey: ["deployments"] });
           }
         } catch {

@@ -31,7 +31,7 @@ ai-k8s/                          # Workspace root = Next.js app
 ├── src/
 │   ├── app/                     # Next.js App Router
 │   │   ├── (auth)/              # Login + signup pages
-│   │   ├── (dashboard)/         # Protected pages (/, /catalog, /deployments, /settings)
+│   │   ├── (dashboard)/         # Protected pages (/, /catalog, /apps, /deployments→redirect, /settings)
 │   │   └── api/                 # API routes
 │   │       ├── auth/            # NextAuth + signup
 │   │       ├── catalog/         # Public: recipes list, detail, search
@@ -46,7 +46,8 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   ├── catalog/             # Recipe cards, grid, filters, detail
 │   │   ├── store/               # App Store: cards, grid, featured, install flow (modal, progress, success)
 │   │   ├── chat/                # Chat provider, messages, input, tool cards
-│   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer
+│   │   ├── my-apps/             # My Apps: app-card, app-grid, app-detail, remove-dialog, status-indicator
+│   │   ├── deployments/         # Deployment cards, detail, status badge, log viewer (legacy)
 │   │   ├── layout/              # Dashboard shell, sidebar (workspace selector), header, chat panel
 │   │   ├── settings/            # Workspace manager component
 │   │   ├── ui/                  # shadcn/ui primitives (button, card, sheet, etc.)

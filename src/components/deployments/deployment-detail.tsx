@@ -103,9 +103,10 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
       }
 
       // Invalidate and redirect
+      await queryClient.invalidateQueries({ queryKey: ["my-apps"] });
       await queryClient.invalidateQueries({ queryKey: ["deployments"] });
       await queryClient.invalidateQueries({ queryKey: ["stack"] });
-      router.push("/deployments");
+      router.push("/apps");
     } catch {
       alert("Failed to remove app");
       setIsDeleting(false);
@@ -116,7 +117,7 @@ export function DeploymentDetail({ deployment }: DeploymentDetailProps) {
     <div className="space-y-6">
       {/* Back link */}
       <Link
-        href="/deployments"
+        href="/apps"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="size-4" />

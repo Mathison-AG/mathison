@@ -44,6 +44,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       lastAssistantMessageIsCompleteWithApprovalResponses,
     onFinish: () => {
       // Invalidate deployment queries so the UI refreshes after agent actions
+      queryClient.invalidateQueries({ queryKey: ["my-apps"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
       queryClient.invalidateQueries({ queryKey: ["stack"] });
     },

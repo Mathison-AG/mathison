@@ -80,7 +80,7 @@ export function InstallSuccess({
       )}
 
       {/* Link to My Apps */}
-      <Link href="/deployments">
+      <Link href="/apps">
         <Button variant="outline" className="w-full rounded-xl">
           My Apps
           <ArrowRight className="size-4" />

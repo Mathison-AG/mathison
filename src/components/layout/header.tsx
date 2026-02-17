@@ -19,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 const pageLabels: Record<string, string> = {
   "/": "App Store",
   "/catalog": "App Store",
+  "/apps": "My Apps",
   "/deployments": "My Apps",
   "/settings": "Settings",
 };

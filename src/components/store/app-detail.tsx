@@ -97,7 +97,7 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
           {showInstallButton && (
             <>
               {isInstalled ? (
-                <Link href="/deployments">
+                <Link href="/apps">
                   <Button
                     variant="outline"
                     size="lg"

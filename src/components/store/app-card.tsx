@@ -77,7 +77,7 @@ export function AppCard({
         <div className="flex items-center gap-3 w-full mt-auto pt-1">
           {isInstalled ? (
             <Link
-              href="/deployments"
+              href="/apps"
               onClick={(e) => e.stopPropagation()}
               className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium h-8 px-3 hover:bg-green-500/5 transition-colors"
             >
