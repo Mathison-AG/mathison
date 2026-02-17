@@ -13,6 +13,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 ## Task Management
 
 - **Review before archive**: When a task is finished, present clear testing instructions to the user (what to check, URLs to visit, things to verify). Do NOT move the task to `.cursor/archive/tasks/` until the user explicitly approves.
+- **Commit + archive on approval**: When the user confirms a task is complete, do all three together: (1) update progress/memory/architecture rules, (2) move the task file to `.cursor/archive/tasks/`, (3) `git add -A && git commit` with a descriptive message. This is a single wrap-up step â€” don't skip the commit.
 - **Completed tasks go to archive**: After user approval, move the task file from `.cursor/tasks/` to `.cursor/archive/tasks/`.
 
 ## Development Environment
