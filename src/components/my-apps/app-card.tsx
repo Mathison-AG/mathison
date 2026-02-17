@@ -4,7 +4,14 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ExternalLink, MoreHorizontal, Settings, RotateCw, Trash2, Database } from "lucide-react";
+import {
+  ExternalLink,
+  MoreHorizontal,
+  Settings,
+  RotateCw,
+  Trash2,
+  Database
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/card";
@@ -14,7 +21,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { StatusIndicator } from "./status-indicator";
 import { RemoveDialog } from "./remove-dialog";
@@ -37,7 +44,9 @@ export function MyAppCard({ app }: MyAppCardProps) {
 
   const iconSrc = app.recipe.iconUrl || `/icons/${app.recipe.slug}.svg`;
   const isRunning = app.status === "RUNNING";
-  const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(app.status);
+  const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(
+    app.status
+  );
 
   function handleRemove() {
     removeApp.mutate(app.id, {
@@ -47,21 +56,25 @@ export function MyAppCard({ app }: MyAppCardProps) {
       },
       onError: (err) => {
         toast.error(err.message);
-      },
+      }
     });
   }
 
   function handleRestart() {
     restartApp.mutate({
       deploymentId: app.id,
-      config: app.config as Record<string, unknown>,
+      config: app.config as Record<string, unknown>
     });
   }
 
   return (
     <>
-      <Link href={`/apps/${app.id}`} className="block group">
-        <Card className="relative flex flex-col items-center gap-3 p-6 transition-all duration-200 hover:shadow-md hover:border-primary/20">
+      <Link
+        href={`/apps/${app.id}`}
+        className="block group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+        aria-label={`${app.recipe.displayName} — ${app.status === "RUNNING" ? "Running" : app.status === "FAILED" ? "Needs attention" : app.status}`}
+      >
+        <Card className="relative flex flex-col items-center gap-2.5 p-4 sm:gap-3 sm:p-6 card-hover hover:border-primary/20">
           {/* App Icon */}
           <div className="flex items-center justify-center size-16 rounded-2xl border bg-background shadow-sm">
             <Image
@@ -128,7 +141,10 @@ export function MyAppCard({ app }: MyAppCardProps) {
                   <span className="sr-only">More actions</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuContent
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {app.recipe.hasWebUI && app.url && isRunning && (
                   <DropdownMenuItem asChild>
                     <a href={app.url} target="_blank" rel="noopener noreferrer">

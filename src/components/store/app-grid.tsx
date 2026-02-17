@@ -17,11 +17,11 @@ export function AppGrid({
   recipes,
   isLoading,
   installedSlugs,
-  onInstall,
+  onInstall
 }: AppGridProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 10 }).map((_, i) => (
           <AppCardSkeleton key={i} />
         ))}
@@ -43,7 +43,7 @@ export function AppGrid({
   }
 
   return (
-    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+    <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {recipes.map((recipe) => (
         <AppCard
           key={recipe.slug}
@@ -58,8 +58,8 @@ export function AppGrid({
 
 function AppCardSkeleton() {
   return (
-    <Card className="flex flex-col items-center gap-3 p-6">
-      <Skeleton className="size-16 rounded-2xl" />
+    <Card className="flex flex-col items-center gap-2.5 p-4 sm:gap-3 sm:p-6">
+      <Skeleton className="size-14 sm:size-16 rounded-2xl" />
       <div className="space-y-1.5 w-full text-center">
         <Skeleton className="h-4 w-20 mx-auto" />
         <Skeleton className="h-3 w-14 mx-auto" />

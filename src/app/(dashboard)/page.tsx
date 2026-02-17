@@ -22,10 +22,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   monitoring: "Monitoring",
   database: "Databases",
   storage: "Storage",
-  analytics: "Analytics",
+  analytics: "Analytics"
 };
 
-const CATEGORY_ORDER = ["automation", "monitoring", "storage", "database", "analytics"];
+const CATEGORY_ORDER = [
+  "automation",
+  "monitoring",
+  "storage",
+  "database",
+  "analytics"
+];
 
 export default function AppStorePage() {
   const searchParams = useSearchParams();
@@ -49,7 +55,7 @@ export default function AppStorePage() {
     deployment: installDeployment,
     error: installError,
     install,
-    reset,
+    reset
   } = useInstall();
 
   // Build set of installed recipe slugs
@@ -87,7 +93,10 @@ export default function AppStorePage() {
   const handleModalClose = useCallback(
     (open: boolean) => {
       setModalOpen(open);
-      if (!open && (phase === "success" || phase === "idle" || phase === "error")) {
+      if (
+        !open &&
+        (phase === "success" || phase === "idle" || phase === "error")
+      ) {
         setSelectedRecipe(null);
         reset();
       }
@@ -121,13 +130,13 @@ export default function AppStorePage() {
   const isFiltered = search.length > 0 || category !== "all";
 
   return (
-    <div className="p-6 pb-12 space-y-8 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 pb-12 space-y-6 sm:space-y-8 max-w-7xl mx-auto">
       {/* Hero / Search */}
-      <div className="text-center space-y-4 py-6">
-        <h1 className="text-3xl font-bold tracking-tight">
+      <div className="text-center space-y-3 sm:space-y-4 py-4 sm:py-6">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           What do you want to set up today?
         </h1>
-        <p className="text-muted-foreground text-base max-w-lg mx-auto">
+        <p className="text-muted-foreground text-sm sm:text-base max-w-lg mx-auto">
           Browse and install open-source apps in one click. No technical
           knowledge required.
         </p>
@@ -156,7 +165,10 @@ export default function AppStorePage() {
       {isFiltered ? (
         /* Filtered view: category chips + flat grid */
         <div className="space-y-6">
-          <CategoryFilters selected={category} onChange={handleCategoryChange} />
+          <CategoryFilters
+            selected={category}
+            onChange={handleCategoryChange}
+          />
           <AppGrid
             recipes={recipes ?? []}
             isLoading={isLoading}

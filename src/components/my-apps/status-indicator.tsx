@@ -17,21 +17,21 @@ const STATUS_MAP: Record<DeploymentStatus, StatusInfo> = {
   RUNNING: { label: "Running", color: "green" },
   FAILED: { label: "Needs attention", color: "red" },
   STOPPED: { label: "Stopped", color: "gray" },
-  DELETING: { label: "Removing...", color: "yellow" },
+  DELETING: { label: "Removing...", color: "yellow" }
 };
 
 const DOT_COLORS = {
   green: "bg-green-500",
   yellow: "bg-yellow-500",
   red: "bg-red-500",
-  gray: "bg-gray-400",
+  gray: "bg-gray-400"
 } as const;
 
 const TEXT_COLORS = {
   green: "text-green-600 dark:text-green-400",
   yellow: "text-yellow-600 dark:text-yellow-400",
   red: "text-red-600 dark:text-red-400",
-  gray: "text-muted-foreground",
+  gray: "text-muted-foreground"
 } as const;
 
 // ─── Component ───────────────────────────────────────────
@@ -46,12 +46,16 @@ export function StatusIndicator({ status, className }: StatusIndicatorProps) {
   const isPulsing = info.color === "yellow";
 
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-sm", className)}>
-      <span className="relative flex size-2">
+    <span
+      className={cn("inline-flex items-center gap-1.5 text-sm", className)}
+      role="status"
+      aria-label={`Status: ${info.label}`}
+    >
+      <span className="relative flex size-2" aria-hidden="true">
         {isPulsing && (
           <span
             className={cn(
-              "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
+              "absolute inline-flex h-full w-full animate-gentle-pulse rounded-full opacity-75",
               DOT_COLORS[info.color]
             )}
           />

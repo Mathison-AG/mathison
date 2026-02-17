@@ -6,17 +6,17 @@ import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-sans"
 });
 
 export const metadata: Metadata = {
   title: "Mathison",
   description:
-    "AI-first cloud platform — deploy and manage services with natural language",
+    "Install and manage open-source apps in one click — no technical knowledge required"
 };
 
 export default function RootLayout({
-  children,
+  children
 }: Readonly<{
   children: React.ReactNode;
 }>) {

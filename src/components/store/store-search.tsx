@@ -14,7 +14,7 @@ interface StoreSearchProps {
 export function StoreSearch({
   value,
   onChange,
-  placeholder = "Search apps...",
+  placeholder = "Search apps..."
 }: StoreSearchProps) {
   const [localValue, setLocalValue] = useState(value);
 
@@ -31,13 +31,19 @@ export function StoreSearch({
   }, [value]);
 
   return (
-    <div className="relative w-full max-w-xl mx-auto">
-      <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+    <div className="relative w-full max-w-xl mx-auto" role="search">
+      <Search
+        className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+        aria-hidden="true"
+      />
       <Input
         placeholder={placeholder}
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
         className="h-12 pl-11 pr-4 text-base rounded-xl border-border/50 bg-muted/30 focus-visible:bg-background transition-colors"
+        aria-label="Search apps"
+        type="search"
+        autoComplete="off"
       />
     </div>
   );

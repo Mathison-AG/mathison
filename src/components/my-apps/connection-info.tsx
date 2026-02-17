@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogDescription,
+  DialogDescription
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -107,7 +107,7 @@ export function ConnectionInfo({
   deploymentId,
   appName,
   open,
-  onOpenChange,
+  onOpenChange
 }: ConnectionInfoProps) {
   const { data, isLoading } = useQuery<AccessInfo>({
     queryKey: ["deployment-access", deploymentId],
@@ -116,7 +116,7 @@ export function ConnectionInfo({
       if (!res.ok) throw new Error("Failed to fetch access info");
       return res.json();
     },
-    enabled: open,
+    enabled: open
   });
 
   return (
@@ -128,7 +128,7 @@ export function ConnectionInfo({
             {appName} Connection Details
           </DialogTitle>
           <DialogDescription>
-            Use these details to connect to your {appName} instance.
+            Use these details to connect to your {appName}.
           </DialogDescription>
         </DialogHeader>
 
@@ -240,7 +240,7 @@ export function ConnectionInfoButton({
   disabled,
   variant = "default",
   size = "sm",
-  className,
+  className
 }: ConnectionInfoButtonProps) {
   const [open, setOpen] = useState(false);
 

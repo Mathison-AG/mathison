@@ -19,7 +19,7 @@ export function CategoryRow({
   recipes,
   onViewAll,
   installedSlugs,
-  onInstall,
+  onInstall
 }: CategoryRowProps) {
   if (recipes.length === 0) return null;
 
@@ -30,14 +30,15 @@ export function CategoryRow({
         {onViewAll && (
           <button
             onClick={onViewAll}
-            className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md px-1"
+            aria-label={`See all ${title} apps`}
           >
             See All
-            <ChevronRight className="size-4" />
+            <ChevronRight className="size-4" aria-hidden="true" />
           </button>
         )}
       </div>
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {recipes.map((recipe) => (
           <AppCard
             key={recipe.slug}

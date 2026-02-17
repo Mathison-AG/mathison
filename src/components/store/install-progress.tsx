@@ -23,13 +23,13 @@ function getProgressSteps(
   const status = deployment?.status ?? "PENDING";
 
   const steps: ProgressStep[] = [
-    { label: "Preparing environment", status: "pending" },
+    { label: "Preparing environment", status: "pending" }
   ];
 
   if (hasDeps) {
     steps.push({
-      label: "Installing required components",
-      status: "pending",
+      label: "Setting up required apps",
+      status: "pending"
     });
   }
 
@@ -90,7 +90,7 @@ export function InstallProgress({
   appName,
   hasDeps,
   deployment,
-  error,
+  error
 }: InstallProgressProps) {
   const steps = getProgressSteps(deployment, hasDeps);
   const percent = getProgressPercent(steps);
@@ -101,7 +101,9 @@ export function InstallProgress({
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium">
-          {isFailed ? `Failed to set up ${appName}` : `Setting up ${appName}...`}
+          {isFailed
+            ? `Failed to set up ${appName}`
+            : `Setting up ${appName}...`}
         </p>
         {!isFailed && (
           <span className="text-xs text-muted-foreground tabular-nums">
@@ -121,9 +123,7 @@ export function InstallProgress({
       </div>
 
       {/* Error message */}
-      {error && (
-        <p className="text-sm text-destructive">{error}</p>
-      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {/* Steps */}
       <div className="space-y-2.5">

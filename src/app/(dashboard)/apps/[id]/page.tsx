@@ -18,7 +18,7 @@ export default async function AppDetailPage({ params }: AppDetailPageProps) {
   // Fetch the deployment to get the recipe slug, then look up gettingStarted from registry
   const deployment = await prisma.deployment.findFirst({
     where: { id, tenantId: session.user.tenantId },
-    select: { recipe: { select: { slug: true } } },
+    select: { recipe: { select: { slug: true } } }
   });
 
   let gettingStarted: string | null = null;
@@ -28,7 +28,7 @@ export default async function AppDetailPage({ params }: AppDetailPageProps) {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       <AppDetail id={id} gettingStarted={gettingStarted} />
     </div>
   );

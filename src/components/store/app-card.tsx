@@ -24,7 +24,7 @@ export function AppCard({
   recipe,
   variant = "default",
   isInstalled = false,
-  onInstall,
+  onInstall
 }: AppCardProps) {
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
   const isFeatured = variant === "featured";
@@ -37,9 +37,13 @@ export function AppCard({
   }
 
   return (
-    <Link href={`/catalog/${recipe.slug}`} className="block h-full group">
+    <Link
+      href={`/catalog/${recipe.slug}`}
+      className="block h-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+      aria-label={`${recipe.displayName} — ${recipe.shortDescription || recipe.category}${isInstalled ? " (installed)" : ""}`}
+    >
       <Card
-        className={`relative flex h-full flex-col items-center gap-3 p-6 transition-all duration-200 hover:shadow-md hover:border-primary/20 ${
+        className={`relative flex h-full flex-col items-center gap-2.5 p-4 sm:gap-3 sm:p-6 card-hover hover:border-primary/20 ${
           isFeatured ? "bg-gradient-to-b from-primary/5 to-transparent" : ""
         }`}
       >
@@ -87,7 +91,8 @@ export function AppCard({
           ) : (
             <button
               onClick={handleGetClick}
-              className="flex-1 inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-medium h-8 px-3 shadow-sm hover:bg-primary/90 transition-colors cursor-pointer"
+              className="flex-1 inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs font-medium h-8 px-3 shadow-sm hover:bg-primary/90 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label={`Install ${recipe.displayName}`}
             >
               Get
             </button>

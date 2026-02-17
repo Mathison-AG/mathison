@@ -125,6 +125,8 @@
   }
 }
 
+/* ── Polish animations ─────────────────────────────────── */
+
 /* Confetti fall animation */
 @keyframes confetti-fall {
   0% {
@@ -139,4 +141,49 @@
 
 .animate-confetti-fall {
   animation: confetti-fall linear forwards;
+}
+
+/* Gentle pulse for status dots (softer than animate-ping) */
+@keyframes gentle-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.8);
+  }
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Card hover lift */
+.card-hover {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* Fade in for page transitions */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 300ms ease-out;
 }

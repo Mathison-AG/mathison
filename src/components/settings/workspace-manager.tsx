@@ -8,12 +8,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
+  CardTitle
 } from "@/components/ui/card";
 import {
   AlertDialog,
@@ -24,7 +25,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -33,7 +34,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DialogTrigger
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -63,7 +64,7 @@ async function createWorkspace(name: string): Promise<Workspace> {
   const res = await fetch("/api/workspaces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name })
   });
   if (!res.ok) {
     const data = await res.json();
@@ -115,7 +116,7 @@ async function importWorkspaceApi(
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(snapshot),
+    body: JSON.stringify(snapshot)
   });
   const data = await res.json();
   if (!res.ok) {
@@ -123,7 +124,9 @@ async function importWorkspaceApi(
       | Array<{ service: string; error: string }>
       | undefined;
     if (details?.length) {
-      throw new Error(details.map((d) => `${d.service}: ${d.error}`).join("\n"));
+      throw new Error(
+        details.map((d) => `${d.service}: ${d.error}`).join("\n")
+      );
     }
     throw new Error(data.error ?? "Failed to import workspace");
   }
@@ -150,7 +153,7 @@ export function WorkspaceManager() {
 
   const { data: workspaces = [], isLoading } = useQuery({
     queryKey: ["workspaces"],
-    queryFn: fetchWorkspaces,
+    queryFn: fetchWorkspaces
   });
 
   const createMutation = useMutation({
@@ -164,7 +167,7 @@ export function WorkspaceManager() {
     },
     onError: (err: Error) => {
       setError(err.message);
-    },
+    }
   });
 
   const deleteMutation = useMutation({
@@ -172,14 +175,14 @@ export function WorkspaceManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workspaces"] });
       router.refresh();
-    },
+    }
   });
 
   const importMutation = useMutation({
     mutationFn: async ({
       wsId,
       snapshot,
-      force,
+      force
     }: {
       wsId: string;
       snapshot: unknown;
@@ -202,12 +205,14 @@ export function WorkspaceManager() {
         toast.info("All apps from the backup already exist.");
       }
       if (result.totalErrors > 0) {
-        toast.error(`${result.totalErrors} app${result.totalErrors !== 1 ? "s" : ""} failed to restore.`);
+        toast.error(
+          `${result.totalErrors} app${result.totalErrors !== 1 ? "s" : ""} failed to restore.`
+        );
       }
     },
     onError: (err: Error) => {
       setImportError(err.message);
-    },
+    }
   });
 
   function handleCreate() {
@@ -248,30 +253,33 @@ export function WorkspaceManager() {
       importMutation.mutate({
         wsId: importTargetWs.id,
         snapshot,
-        force: importForce,
+        force: importForce
       });
     } catch {
-      setImportError("Could not read the file. Make sure it's a valid JSON backup.");
+      setImportError(
+        "Could not read the file. Make sure it's a valid JSON backup."
+      );
     }
   }
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Layers className="size-5 text-muted-foreground" />
+            <Layers className="size-5 text-muted-foreground shrink-0" />
             <div>
               <CardTitle>Workspaces</CardTitle>
               <CardDescription>
-                Isolated environments for your services. Each workspace has its own set of deployments.
+                Separate environments for your apps. Each workspace has its own
+                set of installed apps.
               </CardDescription>
             </div>
           </div>
 
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild>
-              <Button size="sm">
+              <Button size="sm" className="shrink-0 w-full sm:w-auto">
                 <Plus className="mr-2 size-4" />
                 New workspace
               </Button>
@@ -280,7 +288,7 @@ export function WorkspaceManager() {
               <DialogHeader>
                 <DialogTitle>Create workspace</DialogTitle>
                 <DialogDescription>
-                  A new isolated environment will be created for deploying services.
+                  Create a new workspace to keep your apps organized separately.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
@@ -296,9 +304,7 @@ export function WorkspaceManager() {
                     }}
                   />
                 </div>
-                {error && (
-                  <p className="text-sm text-destructive">{error}</p>
-                )}
+                {error && <p className="text-sm text-destructive">{error}</p>}
               </div>
               <DialogFooter>
                 <Button
@@ -327,8 +333,29 @@ export function WorkspaceManager() {
 
       <CardContent>
         {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          <div className="space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between rounded-lg border p-4"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-5 w-14 rounded-full" />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Skeleton className="size-8 rounded-md" />
+                  <Skeleton className="size-8 rounded-md" />
+                  <Skeleton className="size-8 rounded-md" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : workspaces.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">
@@ -339,22 +366,32 @@ export function WorkspaceManager() {
             {workspaces.map((ws) => (
               <div
                 key={ws.id}
-                className="flex items-center justify-between rounded-lg border p-4"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border p-4"
               >
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium">{ws.name}</span>
-                    <Badge variant={ws.status === "ACTIVE" ? "secondary" : "destructive"}>
+                    <span className="font-medium truncate">{ws.name}</span>
+                    <Badge
+                      variant={
+                        ws.status === "ACTIVE" ? "secondary" : "destructive"
+                      }
+                      className="shrink-0"
+                    >
                       {ws.status.toLowerCase()}
                     </Badge>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span>{ws.deploymentCount} service{ws.deploymentCount !== 1 ? "s" : ""}</span>
-                    <span>Created {new Date(ws.createdAt).toLocaleDateString()}</span>
+                    <span>
+                      {ws.deploymentCount} app
+                      {ws.deploymentCount !== 1 ? "s" : ""}
+                    </span>
+                    <span className="hidden sm:inline">
+                      Created {new Date(ws.createdAt).toLocaleDateString()}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -392,7 +429,8 @@ export function WorkspaceManager() {
                         disabled={
                           deleteMutation.isPending ||
                           ws.status !== "ACTIVE" ||
-                          workspaces.filter((w) => w.status === "ACTIVE").length <= 1
+                          workspaces.filter((w) => w.status === "ACTIVE")
+                            .length <= 1
                         }
                       >
                         <Trash2 className="size-4" />
@@ -405,9 +443,12 @@ export function WorkspaceManager() {
                           Delete workspace &quot;{ws.name}&quot;?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will permanently delete the workspace and all{" "}
-                          <strong>{ws.deploymentCount} app{ws.deploymentCount !== 1 ? "s" : ""}</strong>{" "}
-                          installed in it. This action cannot be undone.
+                          This will permanently remove the workspace and all{" "}
+                          <strong>
+                            {ws.deploymentCount} app
+                            {ws.deploymentCount !== 1 ? "s" : ""}
+                          </strong>{" "}
+                          installed in it. This cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -495,15 +536,14 @@ export function WorkspaceManager() {
             </div>
 
             {importError && (
-              <p className="text-sm text-destructive whitespace-pre-wrap">{importError}</p>
+              <p className="text-sm text-destructive whitespace-pre-wrap">
+                {importError}
+              </p>
             )}
           </div>
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setImportOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setImportOpen(false)}>
               Cancel
             </Button>
             <Button

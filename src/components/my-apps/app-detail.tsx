@@ -4,13 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowLeft,
-  RotateCw,
-  Trash2,
-  Calendar,
-  Clock,
-} from "lucide-react";
+import { ArrowLeft, RotateCw, Trash2, Calendar, Clock } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -37,14 +31,16 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+  if (diffMins < 60)
+    return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+  if (diffHours < 24)
+    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
   if (diffDays < 30) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 
   return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
-    day: "numeric",
+    day: "numeric"
   });
 }
 
@@ -88,9 +84,20 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
   if (isLoading) return <DetailSkeleton />;
   if (!app) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center">
-        <div className="text-center space-y-2">
-          <p className="text-sm font-medium">App not found</p>
+      <div
+        className="flex min-h-[300px] items-center justify-center"
+        role="alert"
+      >
+        <div className="text-center space-y-3">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-muted">
+            <ArrowLeft className="size-5 text-muted-foreground" />
+          </div>
+          <div className="space-y-1">
+            <p className="font-medium">App not found</p>
+            <p className="text-sm text-muted-foreground">
+              This app may have been removed.
+            </p>
+          </div>
           <Button variant="outline" size="sm" asChild>
             <Link href="/apps">Back to My Apps</Link>
           </Button>
@@ -101,7 +108,9 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
 
   const iconSrc = app.recipe.iconUrl || `/icons/${app.recipe.slug}.svg`;
   const isRunning = app.status === "RUNNING";
-  const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(app.status);
+  const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(
+    app.status
+  );
 
   function handleRemove() {
     removeApp.mutate(app!.id, {
@@ -111,14 +120,14 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
       },
       onError: (err) => {
         toast.error(err.message);
-      },
+      }
     });
   }
 
   function handleRestart() {
     restartApp.mutate({
       deploymentId: app!.id,
-      config: app!.config as Record<string, unknown>,
+      config: app!.config as Record<string, unknown>
     });
   }
 
@@ -169,7 +178,7 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
             size="icon"
             onClick={handleRestart}
             disabled={isTransitional || restartApp.isPending}
-            title="Restart"
+            aria-label={`Restart ${app.recipe.displayName}`}
           >
             <RotateCw className="size-4" />
           </Button>
@@ -205,7 +214,9 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
             <Card className="p-5">
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
-                  <p className="font-medium">Access your {app.recipe.displayName}</p>
+                  <p className="font-medium">
+                    Access your {app.recipe.displayName}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     View host, port, credentials, and connection string.
                   </p>
@@ -237,41 +248,43 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
       )}
 
       {/* Data Management — Export & Import */}
-      {isRunning && app.dataPortability && (app.dataPortability.canExport || app.dataPortability.canImport) && (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold">Data Management</h2>
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="space-y-0.5">
-                  <p className="font-medium">Export & import your data</p>
-                  <p className="text-sm text-muted-foreground">
-                    {app.dataPortability.exportDescription ??
-                      `Download or restore your ${app.recipe.displayName} data.`}
-                  </p>
+      {isRunning &&
+        app.dataPortability &&
+        (app.dataPortability.canExport || app.dataPortability.canImport) && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold">Data Management</h2>
+              <Card className="p-5">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="space-y-0.5">
+                    <p className="font-medium">Export & import your data</p>
+                    <p className="text-sm text-muted-foreground">
+                      {app.dataPortability.exportDescription ??
+                        `Download or restore your ${app.recipe.displayName} data.`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {app.dataPortability.canExport && (
+                      <DataExportButton
+                        deploymentId={app.id}
+                        appName={app.recipe.displayName}
+                        description={app.dataPortability.exportDescription}
+                      />
+                    )}
+                    {app.dataPortability.canImport && (
+                      <DataImportButton
+                        deploymentId={app.id}
+                        appName={app.recipe.displayName}
+                        description={app.dataPortability.importDescription}
+                      />
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {app.dataPortability.canExport && (
-                    <DataExportButton
-                      deploymentId={app.id}
-                      appName={app.recipe.displayName}
-                      description={app.dataPortability.exportDescription}
-                    />
-                  )}
-                  {app.dataPortability.canImport && (
-                    <DataImportButton
-                      deploymentId={app.id}
-                      appName={app.recipe.displayName}
-                      description={app.dataPortability.importDescription}
-                    />
-                  )}
-                </div>
-              </div>
-            </Card>
-          </div>
-        </>
-      )}
+              </Card>
+            </div>
+          </>
+        )}
 
       {/* Danger Zone */}
       <Separator />
@@ -282,7 +295,8 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
             <div className="space-y-0.5">
               <p className="font-medium">Remove this app</p>
               <p className="text-sm text-muted-foreground">
-                This will delete the app and all its data. This cannot be undone.
+                This will delete the app and all its data. This cannot be
+                undone.
               </p>
             </div>
             <Button

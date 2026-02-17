@@ -12,13 +12,13 @@ import { useMyApps } from "@/hooks/use-my-apps";
 
 function AppGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}
-          className="flex flex-col items-center gap-3 rounded-lg border p-6"
+          className="flex flex-col items-center gap-2.5 rounded-xl border p-4 sm:gap-3 sm:p-6"
         >
-          <Skeleton className="size-16 rounded-2xl" />
+          <Skeleton className="size-14 sm:size-16 rounded-2xl" />
           <div className="space-y-1.5 w-full flex flex-col items-center">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-3 w-16" />
@@ -48,8 +48,8 @@ function EmptyState() {
             You haven&apos;t installed any apps yet
           </h3>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Browse the App Store to find something useful. Install any app
-            in one click — no technical knowledge required.
+            Browse the App Store to find something useful. Install any app in
+            one click — no technical knowledge required.
           </p>
         </div>
         <Button asChild size="lg">
@@ -79,7 +79,7 @@ export function AppGrid() {
       PENDING: 1,
       FAILED: 2,
       DELETING: 3,
-      STOPPED: 4,
+      STOPPED: 4
     };
     return (order[a.status] ?? 5) - (order[b.status] ?? 5);
   });
@@ -100,7 +100,7 @@ export function AppGrid() {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {sorted.map((app) => (
           <MyAppCard key={app.id} app={app} />
         ))}

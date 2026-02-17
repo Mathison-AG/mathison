@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog";
 import { InstallProgress } from "./install-progress";
 import { InstallSuccess } from "./install-success";
@@ -40,7 +40,7 @@ export function InstallModal({
   deployment,
   error,
   onConfirm,
-  onReset,
+  onReset
 }: InstallModalProps) {
   const { isFirstInstall, markInstalled } = useFirstInstall();
 
@@ -124,7 +124,10 @@ export function InstallModal({
   // Confirmation view (idle or error)
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md" aria-describedby="install-dialog-desc">
+      <DialogContent
+        className="sm:max-w-md"
+        aria-describedby="install-dialog-desc"
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border bg-background shadow-sm">
@@ -140,7 +143,7 @@ export function InstallModal({
               <DialogTitle>Install {recipe.displayName}?</DialogTitle>
               <DialogDescription id="install-dialog-desc">
                 {hasDeps
-                  ? `This will set up ${recipe.displayName} and its required components in your workspace. It usually takes about a minute.`
+                  ? `This will set up ${recipe.displayName} and everything it needs to run. It usually takes about a minute.`
                   : `This will set up ${recipe.displayName} in your workspace. It usually takes about a minute.`}
               </DialogDescription>
             </div>
