@@ -44,8 +44,8 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Postgres port 5433**: Another project occupies 5432. All DATABASE_URL references use 5433.
 - **Zod v4 import**: `import { z } from "zod/v4"` — the v4 subpath export. `z.record()` needs 2 args. Error flattening: `z.flattenError(parsed.error)`.
 - **Next.js 16 lint**: Uses `eslint .` directly, not `next lint` (which errors in 16.x).
-- **Helm no longer used for deployments**: Engine V2 uses Server-Side Apply (SSA). Helm CLI still exists in the codebase (kept for cleanup in Step 22) but the worker no longer calls it.
-- **execa removed**: Helm wrapper uses `child_process.execFile` (promisified). execa v9 is ESM-only and breaks tsx CJS mode.
+- **Helm fully removed**: Engine V2 uses Server-Side Apply (SSA). `helm.ts` deleted in Step 22. Helm binary removed from Dockerfile.dev. Handlebars dependency removed.
+- **execa removed**: execa v9 is ESM-only and breaks tsx CJS mode.
 - **ioredis removed**: BullMQ bundles its own. Top-level ioredis caused version conflicts.
 - **Worker runs outside Next.js**: Must use bootstrap pattern (`index.ts` loads env via dotenv, then dynamic-imports `main.ts`). Static ES imports hoist above dotenv.config().
 - **Ollama provider cast**: `ollama-ai-provider` returns LanguageModelV1 but AI SDK v6 expects V3. Cast via `as any as LanguageModelV3`.
@@ -87,15 +87,12 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Sidebar workspace selector**: Dropdown in sidebar between brand and nav. Calls `/api/workspaces/switch` + `router.refresh()`.
 - **Settings workspace manager**: Full CRUD in `/settings` page with TanStack Query.
 
-## Kubernetes & Helm
+## Kubernetes
 
 - `@kubernetes/client-node` v1.4.0: `_from` not `from` in NetworkPolicyIngressRule (JS reserved word)
 - KubeConfig: `loadFromDefault()` for kind/minikube/any. `loadFromCluster()` only as fallback.
 - K8s error `statusCode`: 409=already exists, 404=not found. Use for idempotent ops.
-- Helm values: write to temp file (os.tmpdir + randomUUID), pass via `--values`, cleanup in `finally`.
-- **ALL chart versions use NULL (latest)** for seed recipes — pinned versions reference Docker tags that get removed. This includes Bitnami charts AND the 8gears n8n chart (jumped from 0.26.1 to 2.0.1).
-- 8gears n8n chart 2.x: `persistence` moved under `main.persistence`, `valkey` dependency added (disabled by default). Values template updated for 2.x compatibility.
-- **Pod label selectors**: Worker and `getReleasePodStatus` try `app.kubernetes.io/instance=<deploymentName>` first (standard), then fall back to `release=<deploymentName>` (legacy Helm convention).
+- **Pod label selectors**: Worker tries `app.kubernetes.io/instance=<deploymentName>` first (standard), then falls back to `release=<deploymentName>` (legacy).
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
 ## Typed Recipe System (`src/recipes/`)
@@ -108,7 +105,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **secret() helper**: Use `secret(ctx.secrets, "key")` to safely access secrets (avoids `noUncheckedIndexedAccess` returning `string | undefined`).
 - **Registry**: `getRecipeDefinition(slug)`, `listRecipeDefinitions()`, `requireRecipeDefinition(slug)` from `src/recipes/registry.ts`.
 - **Recipe → Archetype mapping**: postgresql→database, redis→cache, uptime-kuma→webApp, minio→objectStore, n8n→custom build.
-- **Old Helm engine still works**: `src/lib/deployer/` + `src/lib/catalog/seed-data.ts` unchanged. Recipe system runs in parallel until Task 20 swaps engines.
+- **Catalog metadata helper**: `src/lib/catalog/metadata.ts` bridges slim DB Recipe (slug, installCount, featured, embedding) with rich registry definitions for API responses.
 
 ## BullMQ & Deployment Engine
 
@@ -116,21 +113,15 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - Connection: plain options `{ host, port, maxRetriesPerRequest: null }` — NOT IORedis instance.
 - Engine entry points: `initiateDeployment()`, `initiateUpgrade()`, `initiateRemoval()` from `@/lib/deployer/engine`.
 - **Upgrade flow**: `initiateUpgrade()` re-resolves existing deps via `resolveExistingDependencies()` and reuses secrets from K8s via `readK8sSecret()`. Never regenerates secrets on upgrade.
-- Values templates: Handlebars with `noEscape: true`. Context: `config`, `secrets`, `deps`, `tenant`, `platform`, `cluster`.
-- Custom Handlebars helpers registered: `eq` (block helper for equality checks in templates).
-- Template `cluster` context: `domain`, `ingress_class`, `ingress_enabled`, `tls_cluster_issuer` — controlled by env vars `MATHISON_BASE_DOMAIN`, `INGRESS_CLASS`, `INGRESS_ENABLED`, `TLS_CLUSTER_ISSUER`.
-- **Resource config**: All recipes expose `cpu_request`, `memory_request`, `cpu_limit`, `memory_limit` in configSchema. Templates use `{{config.cpu_request}}` etc. Users can change resources via `updateService`.
+- **Resource config**: All recipes expose `cpu_request`, `memory_request`, `cpu_limit`, `memory_limit` in configSchema. Users can change resources via `changeAppSettings`.
 - Dependency auto-deploy: `resolveDependencies()` checks existing, auto-deploys missing. DNS: `<release><suffix>.<namespace>.svc.cluster.local`.
 - **Service name suffixes**: postgresql → `-postgresql`, redis → `-redis-master`, mysql → `-mysql`, mongodb → `-mongodb`, minio → `""` (no suffix). Bitnami charts append chart name; official MinIO chart uses release name directly.
-- **Dependency credentials are flattened**: `DependencyInfo` has `host`, `port`, plus all config/secret values at top level. Templates access `{{deps.n8n-db.password}}` directly (not `{{deps.n8n-db.credentials.password}}`).
+- **Dependency credentials are flattened**: `DependencyInfo` has `host`, `port`, plus all config/secret values at top level. Build context accesses `deps["n8n-db"].password` directly.
 - **Bitnami image tags**: Use `latest` — Bitnami doesn't publish short version tags like `7` or `16` on Docker Hub. Only full tags like `7.4.2-debian-12-r2` and `latest`.
 - **Headless service builder**: Use `type: "None"` in ServiceSpec — builder translates to `type: "ClusterIP"` + `clusterIP: "None"`. Don't set `clusterIP` directly in SSA patches.
 - **managedResources on Deployment**: JSON-serialized K8s resources stored in DB for undeploy. Engine stores them at deploy time, worker reads them for delete.
 - **Stale PVC gotcha**: When redeploying with same name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
-- **OCI Helm errors go to stdout**: OCI chart installs (`oci://`) print pull progress to stdout, then errors. The `getErrorMessage()` in `helm.ts` scans for `Error:` lines. Regular charts use stderr.
-- **Failed releases block re-install**: `helmRecoverStuckRelease()` now uninstalls `failed` releases (not just `pending-*`) so retries work.
-- **MinIO uses official chart**: Bitnami removed their MinIO Docker images from Docker Hub. Switched to official chart (`minio/minio` from `https://charts.min.io/`). Image: `quay.io/minio/minio`. Values differ from Bitnami: `rootUser`/`rootPassword` at top level (not under `auth:`), `buckets:` array (not `defaultBuckets:` string), `persistence.accessMode` singular, `consoleIngress` (not `apiIngress`).
-- **Dockerfile.dev includes helm + kubectl**: Both are installed in the Alpine image for worker to execute Helm commands inside Docker.
+- **Dockerfile.dev includes kubectl**: Installed in the Alpine image for worker to run port-forward commands.
 - **Port-forward for local access**: `kubectl port-forward svc/<svc-name> <local-port>:<svc-port> -n <ns>` — needed for kind clusters without ingress.
 
 ## Deployment Audit Trail
@@ -140,7 +131,6 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Fire-and-forget**: All event recording is async and error-swallowed — never blocks the main flow.
 - **Agent tool**: `getAppHistory({ appId })` returns last 25 events with human-readable diffs.
 - **Deployment model cleanup**: `helmRelease`, `chartVersion`, `revision` removed. K8s label lookups use `deployment.name` (matches `app.kubernetes.io/instance` set by builders).
-- **Helm no longer referenced in Deployment**: All references to Helm in the deployment lifecycle are gone. `helm.ts` still exists for legacy cleanup.
 
 ## One-Click Install
 
@@ -192,7 +182,7 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - next-auth@5.0.0-beta.30 (JWT, credentials only)
 - @kubernetes/client-node@1.4.0, bullmq@5.69.1
 - @xyflow/react@12.10.0, dagre@0.8.5
-- react-markdown@10.1.0, handlebars@4.7.8, bcryptjs@3.0.3
+- react-markdown@10.1.0, bcryptjs@3.0.3
 
 ## Things to Revisit
 

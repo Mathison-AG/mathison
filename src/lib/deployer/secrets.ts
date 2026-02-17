@@ -11,7 +11,6 @@
 import * as crypto from "node:crypto";
 import * as k8s from "@kubernetes/client-node";
 
-import type { SecretsSchema } from "@/types/recipe";
 import type { SecretDefinition } from "@/recipes/_base/types";
 
 // ─── Password generation ──────────────────────────────────
@@ -49,34 +48,6 @@ export function generateSecretsFromDefinition(
     // Auto-generate if definition says so
     if (def.generate) {
       secrets[key] = generatePassword(def.length || 24);
-    }
-  }
-
-  return secrets;
-}
-
-// ─── Legacy secret schema processing (for Helm engine) ────
-
-/**
- * Generate secrets based on a recipe's secrets schema (legacy DB format).
- * Reuses existing secrets if provided (for upgrades).
- */
-export function generateSecrets(
-  secretsSchema: SecretsSchema,
-  existingSecrets?: Record<string, string>
-): Record<string, string> {
-  const secrets: Record<string, string> = {};
-
-  for (const [key, field] of Object.entries(secretsSchema)) {
-    // Reuse existing secret if available
-    if (existingSecrets?.[key]) {
-      secrets[key] = existingSecrets[key];
-      continue;
-    }
-
-    // Auto-generate if schema says so
-    if (field.generate) {
-      secrets[key] = generatePassword(field.length || 24);
     }
   }
 

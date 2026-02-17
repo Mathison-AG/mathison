@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
 import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
+import { getRecipeMetadataOrFallback } from "@/lib/catalog/metadata";
 import type { PodResources, ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 export async function GET() {
@@ -25,12 +26,7 @@ export async function GET() {
       where: { workspaceId: workspace.id, status: { not: "STOPPED" } },
       include: {
         recipe: {
-          select: {
-            displayName: true,
-            slug: true,
-            iconUrl: true,
-            category: true,
-          },
+          select: { slug: true },
         },
       },
       orderBy: { createdAt: "asc" },
@@ -65,6 +61,7 @@ export async function GET() {
       // Summarize resources from first pod's first container
       const podResources = resourceMap.get(d.name);
       const mainContainer = podResources?.[0]?.containers?.[0];
+      const recipeMeta = getRecipeMetadataOrFallback(d.recipe.slug);
 
       return {
         id: d.id,
@@ -73,13 +70,13 @@ export async function GET() {
         data: {
           deploymentId: d.id,
           displayName: d.name,
-          recipeName: d.recipe.displayName,
-          recipeSlug: d.recipe.slug,
-          iconUrl: d.recipe.iconUrl || `/icons/${d.recipe.slug}.svg`,
+          recipeName: recipeMeta.displayName,
+          recipeSlug: recipeMeta.slug,
+          iconUrl: recipeMeta.iconUrl,
           status: d.status,
           url: d.url,
           appVersion: d.appVersion,
-          category: d.recipe.category,
+          category: recipeMeta.category,
           resources: mainContainer
             ? {
                 cpuRequest: mainContainer.requests.cpu,

@@ -255,10 +255,12 @@ async function deployDependency(params: {
   const resources = depRecipe.build(buildCtx);
   const serializedResources = JSON.stringify(resources);
 
-  // Find DB recipe record for linking
-  const dbRecipe = await prisma.recipe.findFirst({
+  // Find or create DB recipe record for linking
+  const dbRecipe = await prisma.recipe.upsert({
     where: { slug: dep.recipe },
-    select: { id: true, version: true },
+    create: { slug: dep.recipe },
+    update: {},
+    select: { id: true },
   });
 
   // Create Deployment record
@@ -266,8 +268,8 @@ async function deployDependency(params: {
     data: {
       tenantId,
       workspaceId,
-      recipeId: dbRecipe?.id ?? "",
-      recipeVersion: dbRecipe?.version ?? 1,
+      recipeId: dbRecipe.id,
+      recipeVersion: 1,
       name: alias,
       namespace: workspaceNamespace,
       config: depConfig as unknown as Prisma.InputJsonValue,

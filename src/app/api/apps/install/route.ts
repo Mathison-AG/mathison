@@ -4,7 +4,7 @@ import { z } from "zod/v4";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
-import { getRecipe } from "@/lib/catalog/service";
+import { getRecipeDefinition } from "@/recipes/registry";
 import { initiateDeployment } from "@/lib/deployer/engine";
 
 // ─── POST /api/apps/install ────────────────────────────────
@@ -31,8 +31,8 @@ export async function POST(req: Request) {
 
     const { recipeSlug } = parsed.data;
 
-    // Look up recipe
-    const recipe = await getRecipe(recipeSlug);
+    // Look up recipe from registry
+    const recipe = getRecipeDefinition(recipeSlug);
     if (!recipe) {
       return NextResponse.json(
         { error: "App not found" },
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (message.includes("not found in catalog")) {
+    if (message.includes("not found in registry") || message.includes("not found in catalog")) {
       return NextResponse.json(
         { error: "This app is no longer available in the catalog." },
         { status: 404 }

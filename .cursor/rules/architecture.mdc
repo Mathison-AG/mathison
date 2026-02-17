@@ -66,10 +66,10 @@ ai-k8s/                          # Workspace root = Next.js app
 │   │   └── registry.ts          # getRecipeDefinition(), listRecipeDefinitions()
 │   │
 │   ├── lib/
-│   │   ├── agent/               # AI: provider factory, system prompt, 10 tools
-│   │   ├── catalog/             # Recipes: CRUD service, embeddings, seed data
-│   │   ├── cluster/             # K8s client, Helm CLI wrapper, ingress
-│   │   ├── deployer/            # Engine, dependency resolution, secrets, templates
+│   │   ├── agent/               # AI: provider factory, system prompt, tools
+│   │   ├── catalog/             # Catalog service (registry + DB), metadata helper, embeddings
+│   │   ├── cluster/             # K8s client, ingress
+│   │   ├── deployer/            # Engine, dependency resolution, secrets
 │   │   ├── queue/               # BullMQ connection, queue definitions, job types
 │   │   ├── tenant/              # Tenant-level operations, quota management
 │   │   ├── workspace/           # Workspace CRUD, K8s provisioning, active context
@@ -115,7 +115,6 @@ ai-k8s/                          # Workspace root = Next.js app
 
 ### Cluster Integration (`src/lib/cluster/`)
 - **kubernetes.ts** — KubeConfig, namespace CRUD, pod status/logs, resource queries.
-- **helm.ts** — Helm CLI wrapper via `child_process.execFile`. Install, upgrade, uninstall, status.
 - **ingress.ts** — Ingress rule management.
 - **port-manager.ts** — DB-backed local port assignment (range 10000–10999) for port-forwarding.
 - **port-forward.ts** — kubectl port-forward child process management. Tracks PIDs, auto-restart on death.
@@ -148,8 +147,7 @@ ai-k8s/                          # Workspace root = Next.js app
 | Tenant | Multi-tenancy root. Has slug. Owns workspaces. |
 | User | Auth. Belongs to Tenant. Has role (ADMIN/USER), activeWorkspaceId. |
 | Workspace | Isolated environment. Belongs to Tenant. Maps to K8s namespace (`{tenantSlug}-{workspaceSlug}`). Has quota, status (ACTIVE/DELETING/DELETED). |
-| Recipe | Service template (e.g., PostgreSQL). Has Helm chart info, configSchema, valuesTemplate, hasWebUI |
-| RecipeVersion | Version history for recipes |
+| Recipe | Slim DB record for dynamic data (slug, installCount, featured, embedding). Static metadata (name, config, build logic) lives in recipe registry (`src/recipes/`). |
 | Deployment | Running service instance. Belongs to Workspace + Tenant + Recipe. Unique on `[workspaceId, name]`. Has localPort/servicePort/serviceName for port-forwarding. No more helmRelease/chartVersion/revision. |
 | DeploymentEvent | Append-only audit trail for deployment state changes. Actions: created, config_changed, restarted, health_changed, removed, failed, status_changed. Indexed on [deploymentId, createdAt]. |
 | Stack | Groups of deployments (future use) |

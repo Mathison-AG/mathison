@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getRecipeDefinition } from "@/recipes/registry";
 
 import { AppDetail } from "@/components/my-apps/app-detail";
 
@@ -14,18 +15,15 @@ export default async function AppDetailPage({ params }: AppDetailPageProps) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  // Fetch the deployment to get the recipeId, then fetch the recipe for gettingStarted
+  // Fetch the deployment to get the recipe slug, then look up gettingStarted from registry
   const deployment = await prisma.deployment.findFirst({
     where: { id, tenantId: session.user.tenantId },
-    select: { recipeId: true },
+    select: { recipe: { select: { slug: true } } },
   });
 
   let gettingStarted: string | null = null;
-  if (deployment?.recipeId) {
-    const recipe = await prisma.recipe.findUnique({
-      where: { id: deployment.recipeId },
-      select: { gettingStarted: true },
-    });
+  if (deployment?.recipe.slug) {
+    const recipe = getRecipeDefinition(deployment.recipe.slug);
     gettingStarted = recipe?.gettingStarted ?? null;
   }
 

@@ -28,7 +28,7 @@ export function FeaturedApps({
       <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
         {recipes.map((recipe) => (
           <AppCard
-            key={recipe.id}
+            key={recipe.slug}
             recipe={recipe}
             variant="featured"
             isInstalled={installedSlugs?.has(recipe.slug)}

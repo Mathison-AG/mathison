@@ -2,8 +2,13 @@ import { tool } from "ai";
 import { z } from "zod/v4";
 
 import { prisma } from "@/lib/db";
-import { searchRecipes, getRecipe, createRecipe } from "@/lib/catalog/service";
+import { searchRecipes } from "@/lib/catalog/service";
+import { getRecipeMetadataOrFallback } from "@/lib/catalog/metadata";
 import { getReleasePodStatus, getReleaseLogs } from "@/lib/cluster/kubernetes";
+import {
+  getRecipeDefinition,
+  listRecipeDefinitions,
+} from "@/recipes/registry";
 import {
   initiateDeployment,
   initiateUpgrade,
@@ -14,8 +19,6 @@ import {
   listWorkspaces,
   deleteWorkspace,
 } from "@/lib/workspace/manager";
-
-import type { ConfigSchema, AiHints, RecipeCreateInput } from "@/types/recipe";
 
 // ─── Time helpers ────────────────────────────────────────
 
@@ -113,7 +116,6 @@ function analyzeLogs(appName: string, logs: string, restarts: number): Diagnosis
   const lines = logs.split("\n").filter(Boolean);
   const lowerLogs = logs.toLowerCase();
 
-  // Check for common error patterns
   if (lowerLogs.includes("out of memory") || lowerLogs.includes("oom") || lowerLogs.includes("memory limit")) {
     return {
       appName,
@@ -172,7 +174,6 @@ function analyzeLogs(appName: string, logs: string, restarts: number): Diagnosis
     };
   }
 
-  // No obvious issues found
   if (lines.length < 5) {
     return {
       appName,
@@ -186,6 +187,35 @@ function analyzeLogs(appName: string, logs: string, restarts: number): Diagnosis
     diagnosis: `${appName} looks like it's running normally. The logs don't show any obvious issues.`,
     suggestion: null,
   };
+}
+
+// ─── Config description helper ───────────────────────────
+
+/** Extract human-readable config option descriptions from a Zod schema */
+function describeConfigSchema(
+  schema: z.ZodType<unknown>
+): Record<string, string> | null {
+  try {
+    // Try to get the shape from the Zod schema
+    if ("shape" in schema && typeof schema.shape === "object" && schema.shape !== null) {
+      const shape = schema.shape as Record<string, z.ZodType<unknown>>;
+      const descriptions: Record<string, string> = {};
+
+      for (const [key, fieldSchema] of Object.entries(shape)) {
+        const desc = fieldSchema.description;
+        if (desc) {
+          descriptions[key] = desc;
+        } else {
+          descriptions[key] = key;
+        }
+      }
+
+      return Object.keys(descriptions).length > 0 ? descriptions : null;
+    }
+  } catch {
+    // Schema introspection failed — not critical
+  }
+  return null;
 }
 
 // ─── Tools ───────────────────────────────────────────────
@@ -296,39 +326,31 @@ export function getTools(tenantId: string, workspaceId: string) {
           }));
         } catch (error) {
           console.error(
-            "[findApps] Semantic search failed, falling back to text search:",
+            "[findApps] Semantic search failed, falling back to registry search:",
             error
           );
-          const recipes = await prisma.recipe.findMany({
-            where: {
-              status: "PUBLISHED",
-              ...(category ? { category } : {}),
-              OR: [
-                { displayName: { contains: query, mode: "insensitive" } },
-                { description: { contains: query, mode: "insensitive" } },
-                { shortDescription: { contains: query, mode: "insensitive" } },
-                { tags: { has: query.toLowerCase() } },
-                { useCases: { hasSome: [query.toLowerCase()] } },
-              ],
-            },
-            select: {
-              slug: true,
-              displayName: true,
-              description: true,
-              shortDescription: true,
-              category: true,
-              installCount: true,
-            },
-            orderBy: { displayName: "asc" },
-            take: 10,
-          });
-          return recipes.map((r) => ({
+          // Fallback: search registry directly
+          const allRecipes = listRecipeDefinitions();
+          const q = query.toLowerCase();
+          const filtered = allRecipes
+            .filter((r) => {
+              if (category && r.category !== category) return false;
+              return (
+                r.displayName.toLowerCase().includes(q) ||
+                r.description.toLowerCase().includes(q) ||
+                r.tags.some((t) => t.includes(q)) ||
+                r.aiHints.summary.toLowerCase().includes(q)
+              );
+            })
+            .slice(0, 10);
+
+          return filtered.map((r) => ({
             slug: r.slug,
             name: r.displayName,
             tagline: r.shortDescription || r.description,
             category: r.category,
-            popular: r.installCount > 0,
-            installCount: r.installCount,
+            popular: false,
+            installCount: 0,
           }));
         }
       },
@@ -336,15 +358,25 @@ export function getTools(tenantId: string, workspaceId: string) {
 
     getAppInfo: tool({
       description:
-        "Get details about a specific app — what it does, what it's good for, and how to set it up.",
+        "Get details about a specific app — what it does, what it's good for, how to set it up, and what settings are available.",
       inputSchema: z.object({
         slug: z.string().describe("App identifier, e.g. 'n8n' or 'postgresql'"),
       }),
       execute: async ({ slug }) => {
-        const recipe = await getRecipe(slug);
+        const recipe = getRecipeDefinition(slug);
         if (!recipe) {
           return { error: `App '${slug}' not found in our catalog.` };
         }
+
+        // Get install count from DB
+        const dbRecipe = await prisma.recipe.findUnique({
+          where: { slug },
+          select: { installCount: true },
+        });
+
+        // Describe available config options
+        const configOptions = describeConfigSchema(recipe.configSchema);
+
         return {
           slug: recipe.slug,
           name: recipe.displayName,
@@ -355,8 +387,13 @@ export function getTools(tenantId: string, workspaceId: string) {
           category: recipe.category,
           websiteUrl: recipe.websiteUrl,
           documentationUrl: recipe.documentationUrl,
-          needsOtherApps: recipe.dependencies.length > 0
-            ? recipe.dependencies.map((d) => d.service)
+          installCount: dbRecipe?.installCount ?? 0,
+          configOptions,
+          needsOtherApps: recipe.dependencies && Object.keys(recipe.dependencies).length > 0
+            ? Object.values(recipe.dependencies).map((d) => ({
+                app: d.recipe,
+                reason: d.reason,
+              }))
             : null,
         };
       },
@@ -382,6 +419,21 @@ export function getTools(tenantId: string, workspaceId: string) {
       }),
       execute: async ({ appSlug, name, config }) => {
         try {
+          // Validate config against recipe's Zod schema before deploying
+          if (config && Object.keys(config).length > 0) {
+            const recipe = getRecipeDefinition(appSlug);
+            if (!recipe) {
+              return { error: `App '${appSlug}' not found in our catalog.` };
+            }
+            const parsed = recipe.configSchema.safeParse(config);
+            if (!parsed.success) {
+              return {
+                error: `Invalid settings: ${String(parsed.error)}`,
+                hint: "Check the available settings with getAppInfo first.",
+              };
+            }
+          }
+
           const result = await initiateDeployment({
             tenantId,
             workspaceId,
@@ -415,7 +467,7 @@ export function getTools(tenantId: string, workspaceId: string) {
           where: { workspaceId },
           include: {
             recipe: {
-              select: { displayName: true, slug: true, category: true },
+              select: { slug: true },
             },
           },
           orderBy: { createdAt: "desc" },
@@ -441,10 +493,11 @@ export function getTools(tenantId: string, workspaceId: string) {
           deployments.map(async (d) => {
             const k8sStatus = await getK8sPodStatus(d.namespace, d.name);
             const healthy = arePodHealthy(k8sStatus.pods);
+            const recipeMeta = getRecipeMetadataOrFallback(d.recipe.slug);
             return {
               appId: d.id,
               appName: d.name,
-              displayName: d.recipe.displayName,
+              displayName: recipeMeta.displayName,
               status: d.status === "RUNNING" ? (healthy ? "running" : "running") : d.status.toLowerCase(),
               statusLabel: consumerStatusLabel(d.status, healthy),
               url: d.url,
@@ -469,12 +522,7 @@ export function getTools(tenantId: string, workspaceId: string) {
           where: { id: appId, tenantId },
           include: {
             recipe: {
-              select: {
-                displayName: true,
-                slug: true,
-                category: true,
-                gettingStarted: true,
-              },
+              select: { slug: true },
             },
           },
         });
@@ -482,6 +530,9 @@ export function getTools(tenantId: string, workspaceId: string) {
         if (!deployment) {
           return { error: "App not found" };
         }
+
+        const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+        const recipeDef = getRecipeDefinition(deployment.recipe.slug);
 
         const k8sStatus = await getK8sPodStatus(
           deployment.namespace,
@@ -492,13 +543,13 @@ export function getTools(tenantId: string, workspaceId: string) {
         return {
           appId: deployment.id,
           appName: deployment.name,
-          displayName: deployment.recipe.displayName,
+          displayName: recipeMeta.displayName,
           status: deployment.status === "RUNNING" ? (healthy ? "running" : "running") : deployment.status.toLowerCase(),
           statusLabel: consumerStatusLabel(deployment.status, healthy),
           url: deployment.url,
           healthy: deployment.status === "RUNNING" ? healthy : false,
           installedAt: timeAgo(deployment.createdAt),
-          gettingStarted: deployment.recipe.gettingStarted,
+          gettingStarted: recipeDef?.gettingStarted ?? null,
           errorMessage: deployment.status === "FAILED"
             ? "This app had trouble starting. You can try reinstalling it or ask me to diagnose the issue."
             : null,
@@ -521,7 +572,7 @@ export function getTools(tenantId: string, workspaceId: string) {
             namespace: true,
             name: true,
             status: true,
-            recipe: { select: { displayName: true } },
+            recipe: { select: { slug: true } },
           },
         });
 
@@ -529,22 +580,22 @@ export function getTools(tenantId: string, workspaceId: string) {
           return { error: "App not found" };
         }
 
+        const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+
         if (deployment.status === "PENDING") {
           return {
-            appName: deployment.recipe.displayName,
-            diagnosis: `${deployment.recipe.displayName} is still being set up. Give it a minute and check back.`,
+            appName: recipeMeta.displayName,
+            diagnosis: `${recipeMeta.displayName} is still being set up. Give it a minute and check back.`,
             suggestion: null,
           };
         }
 
-        // Get pod status for restart info
         const k8sStatus = await getK8sPodStatus(
           deployment.namespace,
           deployment.name
         );
         const totalRestarts = k8sStatus.pods.reduce((sum, p) => sum + p.restarts, 0);
 
-        // Get logs
         const logs = await getK8sPodLogs(
           deployment.namespace,
           deployment.name,
@@ -552,7 +603,7 @@ export function getTools(tenantId: string, workspaceId: string) {
         );
 
         return analyzeLogs(
-          deployment.recipe.displayName,
+          recipeMeta.displayName,
           logs,
           totalRestarts
         );
@@ -572,13 +623,15 @@ export function getTools(tenantId: string, workspaceId: string) {
           where: { id: appId, tenantId },
           select: {
             name: true,
-            recipe: { select: { displayName: true } },
+            recipe: { select: { slug: true } },
           },
         });
 
         if (!deployment) {
           return { error: "App not found" };
         }
+
+        const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
 
         const events = await prisma.deploymentEvent.findMany({
           where: { deploymentId: appId },
@@ -588,7 +641,7 @@ export function getTools(tenantId: string, workspaceId: string) {
 
         if (events.length === 0) {
           return {
-            appName: deployment.recipe.displayName,
+            appName: recipeMeta.displayName,
             message: "No history recorded for this app yet.",
             events: [] as Array<{
               action: string;
@@ -600,7 +653,7 @@ export function getTools(tenantId: string, workspaceId: string) {
         }
 
         return {
-          appName: deployment.recipe.displayName,
+          appName: recipeMeta.displayName,
           events: events.map((e) => {
             const newState = (e.newState ?? {}) as Record<string, unknown>;
             const previousState = (e.previousState ?? {}) as Record<string, unknown>;
@@ -652,6 +705,30 @@ export function getTools(tenantId: string, workspaceId: string) {
       }),
       execute: async ({ appId, config }) => {
         try {
+          // Look up the deployment to get its recipe slug for validation
+          const deployment = await prisma.deployment.findFirst({
+            where: { id: appId, tenantId },
+            select: { recipe: { select: { slug: true } }, config: true },
+          });
+
+          if (!deployment) {
+            return { error: "App not found" };
+          }
+
+          // Validate the new config against the recipe's Zod schema
+          const recipe = getRecipeDefinition(deployment.recipe.slug);
+          if (recipe) {
+            const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
+            const merged = { ...existingConfig, ...config };
+            const parsed = recipe.configSchema.safeParse(merged);
+            if (!parsed.success) {
+              return {
+                error: `Invalid settings: ${String(parsed.error)}`,
+                hint: "Check the available settings with getAppInfo first.",
+              };
+            }
+          }
+
           const result = await initiateUpgrade({
             tenantId,
             deploymentId: appId,
@@ -666,6 +743,86 @@ export function getTools(tenantId: string, workspaceId: string) {
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error("[changeAppSettings]", { appId, tenantId }, err);
+          return { error: message };
+        }
+      },
+    }),
+
+    previewChanges: tool({
+      description:
+        "Preview what would change before applying new settings. Shows a summary of the differences without making any changes. Use this to let the user review before modifying an app.",
+      inputSchema: z.object({
+        appId: z.string().describe("The app's ID to preview changes for"),
+        config: z
+          .record(z.string(), z.unknown())
+          .describe("New settings to preview"),
+      }),
+      execute: async ({ appId, config }) => {
+        try {
+          const deployment = await prisma.deployment.findFirst({
+            where: { id: appId, tenantId },
+            select: {
+              name: true,
+              config: true,
+              recipe: { select: { slug: true } },
+            },
+          });
+
+          if (!deployment) {
+            return { error: "App not found" };
+          }
+
+          const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+          const recipe = getRecipeDefinition(deployment.recipe.slug);
+
+          if (!recipe) {
+            return { error: `Recipe '${deployment.recipe.slug}' not found in registry.` };
+          }
+
+          const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
+          const merged = { ...existingConfig, ...config };
+
+          // Validate the merged config
+          const parsed = recipe.configSchema.safeParse(merged);
+          if (!parsed.success) {
+            return {
+              error: `Invalid settings: ${String(parsed.error)}`,
+              hint: "Check the available settings with getAppInfo first.",
+            };
+          }
+
+          const validatedConfig = parsed.data as Record<string, unknown>;
+
+          // Build a diff of what would change
+          const changes: Array<{ setting: string; from: string; to: string }> = [];
+          for (const [key, newVal] of Object.entries(validatedConfig)) {
+            const oldVal = existingConfig[key];
+            if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+              changes.push({
+                setting: key,
+                from: oldVal !== undefined ? String(oldVal) : "(default)",
+                to: String(newVal),
+              });
+            }
+          }
+
+          if (changes.length === 0) {
+            return {
+              appName: recipeMeta.displayName,
+              message: "No changes detected — the new settings match the current configuration.",
+              changes: [],
+            };
+          }
+
+          return {
+            appName: recipeMeta.displayName,
+            message: `Preview of changes to ${recipeMeta.displayName}:`,
+            changes,
+            note: "Use changeAppSettings to apply these changes.",
+          };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error("[previewChanges]", { appId, tenantId }, err);
           return { error: message };
         }
       },
@@ -698,57 +855,6 @@ export function getTools(tenantId: string, workspaceId: string) {
           console.error("[uninstallApp]", { appId, tenantId }, err);
           return { error: message };
         }
-      },
-    }),
-
-    // ── Requesting new apps ──────────────────────────────
-
-    requestApp: tool({
-      description:
-        "Request a new app to be added to the store. Use when the user wants something we don't have in the catalog.",
-      inputSchema: z.object({
-        slug: z.string().describe("Short identifier for the app, e.g. 'grafana'"),
-        displayName: z.string().describe("Human-readable name, e.g. 'Grafana'"),
-        description: z.string().describe("What this app does, in plain language"),
-        category: z
-          .string()
-          .describe(
-            "Category: database, automation, monitoring, storage, analytics"
-          ),
-        chartUrl: z.string().describe("Package source URL"),
-        chartVersion: z.string().optional().describe("Specific version"),
-        valuesTemplate: z
-          .string()
-          .optional()
-          .describe("Configuration template"),
-        configSchema: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Available settings"),
-        aiHints: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("AI metadata: summary, whenToSuggest, pairsWellWith"),
-      }),
-      execute: async (params) => {
-        const input: RecipeCreateInput = {
-          slug: params.slug,
-          displayName: params.displayName,
-          description: params.description,
-          category: params.category,
-          chartUrl: params.chartUrl,
-          chartVersion: params.chartVersion,
-          valuesTemplate: params.valuesTemplate,
-          configSchema: params.configSchema as ConfigSchema | undefined,
-          aiHints: params.aiHints as AiHints | undefined,
-        };
-
-        const recipe = await createRecipe(input);
-
-        return {
-          appName: recipe.displayName,
-          message: `Great news! ${recipe.displayName} has been submitted for review. Once approved, it'll be available in the app store.`,
-        };
       },
     }),
   };

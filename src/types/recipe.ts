@@ -1,71 +1,13 @@
-import type { RecipeStatus, RecipeTier } from "@/generated/prisma/enums";
-
-// ─── Config Schema Types ─────────────────────────────────
-
-interface ConfigFieldBase {
-  label?: string;
-  description?: string;
-  required?: boolean;
-}
-
-interface ConfigFieldString extends ConfigFieldBase {
-  type: "string";
-  default?: string;
-}
-
-interface ConfigFieldNumber extends ConfigFieldBase {
-  type: "number";
-  default?: number;
-  min?: number;
-  max?: number;
-}
-
-interface ConfigFieldBoolean extends ConfigFieldBase {
-  type: "boolean";
-  default?: boolean;
-}
-
-interface ConfigFieldSelect extends ConfigFieldBase {
-  type: "select";
-  options: string[];
-  default?: string;
-}
-
-export type ConfigField =
-  | ConfigFieldString
-  | ConfigFieldNumber
-  | ConfigFieldBoolean
-  | ConfigFieldSelect;
-
-export type ConfigSchema = Record<string, ConfigField>;
-
-// ─── Secrets Schema ──────────────────────────────────────
-
-export interface SecretField {
-  description?: string;
-  generate?: boolean; // Auto-generate if not provided
-  length?: number; // For auto-generated secrets
-}
-
-export type SecretsSchema = Record<string, SecretField>;
-
-// ─── Dependency ──────────────────────────────────────────
-
-export interface RecipeDependency {
-  service: string; // Recipe slug (e.g. "postgresql")
-  alias?: string; // Override name for the dependency
-  config?: Record<string, unknown>; // Default config for the dependency
-}
-
-// ─── Ingress Config ──────────────────────────────────────
-
-export interface IngressConfig {
-  enabled: boolean;
-  hostnameTemplate?: string; // e.g. "n8n-{tenant}.{domain}"
-  port?: number;
-  path?: string;
-  serviceNameSuffix?: string; // e.g. "-postgresql", "-redis-master", "" (empty = same as release)
-}
+/**
+ * Recipe Types
+ *
+ * Types for the catalog API responses. These describe the shape of data
+ * returned by API routes — sourced from the recipe registry (static metadata)
+ * and database (dynamic data like install counts).
+ *
+ * For recipe system internals (config schemas, build contexts, etc.), see
+ * src/recipes/_base/types.ts.
+ */
 
 // ─── AI Hints ────────────────────────────────────────────
 
@@ -75,131 +17,43 @@ export interface AiHints {
   pairsWellWith: string[];
 }
 
-// ─── Health Check ────────────────────────────────────────
-
-export interface HealthCheck {
-  type?: "tcp" | "http" | "exec";
-  port?: number;
-  path?: string;
-  intervalSeconds?: number;
-}
-
-// ─── Resource Spec ───────────────────────────────────────
-
-export interface ResourceSpec {
-  cpu: string;
-  memory: string;
-}
-
-// ─── Recipe ──────────────────────────────────────────────
+// ─── Recipe (Catalog API Response) ───────────────────────
 
 export interface Recipe {
-  id: string;
   slug: string;
   displayName: string;
   description: string;
+  shortDescription: string | null;
   category: string;
   tags: string[];
-  iconUrl: string | null;
-  sourceType: string;
-  chartUrl: string;
-  chartVersion: string | null;
-  configSchema: ConfigSchema;
-  secretsSchema: SecretsSchema;
-  valuesTemplate: string;
-  dependencies: RecipeDependency[];
-  ingressConfig: IngressConfig;
-  resourceDefaults: ResourceSpec;
-  resourceLimits: ResourceSpec;
-  healthCheck: HealthCheck;
-  aiHints: AiHints;
-  // Consumer-facing
-  shortDescription: string | null;
+  iconUrl: string;
   useCases: string[];
   gettingStarted: string | null;
-  screenshots: string[];
   websiteUrl: string | null;
   documentationUrl: string | null;
-  installCount: number;
-  featured: boolean;
   hasWebUI: boolean;
-  // Metadata
-  tier: RecipeTier;
-  status: RecipeStatus;
-  version: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// ─── API Input Types ─────────────────────────────────────
-
-export interface RecipeListFilters {
-  category?: string;
-  search?: string;
-  status?: RecipeStatus;
-}
-
-export interface RecipeCreateInput {
-  slug: string;
-  displayName: string;
-  description: string;
-  category: string;
-  tags?: string[];
-  iconUrl?: string;
-  sourceType?: string;
-  chartUrl: string;
-  chartVersion?: string;
-  configSchema?: ConfigSchema;
-  secretsSchema?: SecretsSchema;
-  valuesTemplate?: string;
-  dependencies?: RecipeDependency[];
-  ingressConfig?: IngressConfig;
-  resourceDefaults?: ResourceSpec;
-  resourceLimits?: ResourceSpec;
-  healthCheck?: HealthCheck;
-  aiHints?: AiHints;
-  // Consumer-facing
-  shortDescription?: string;
-  useCases?: string[];
-  gettingStarted?: string;
-  screenshots?: string[];
-  websiteUrl?: string;
-  documentationUrl?: string;
-  featured?: boolean;
-  hasWebUI?: boolean;
-}
-
-export interface RecipeUpdateInput {
-  displayName?: string;
-  description?: string;
-  category?: string;
-  tags?: string[];
-  iconUrl?: string | null;
-  chartUrl?: string;
-  chartVersion?: string | null;
-  configSchema?: ConfigSchema;
-  secretsSchema?: SecretsSchema;
-  valuesTemplate?: string;
-  dependencies?: RecipeDependency[];
-  ingressConfig?: IngressConfig;
-  resourceDefaults?: ResourceSpec;
-  resourceLimits?: ResourceSpec;
-  healthCheck?: HealthCheck;
-  aiHints?: AiHints;
-  status?: RecipeStatus;
+  featured: boolean;
+  installCount: number;
+  dependencies: Array<{ recipe: string; reason: string }>;
+  screenshots: string[];
 }
 
 // ─── Search Result ───────────────────────────────────────
 
 export interface RecipeSearchResult {
-  id: string;
   slug: string;
   displayName: string;
   description: string;
-  shortDescription: string | null;
+  shortDescription?: string;
   category: string;
-  tier: RecipeTier;
   installCount: number;
   featured: boolean;
   similarity: number;
+}
+
+// ─── List Filters ────────────────────────────────────────
+
+export interface RecipeListFilters {
+  category?: string;
+  search?: string;
 }

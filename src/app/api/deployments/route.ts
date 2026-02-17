@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getActiveWorkspace } from "@/lib/workspace/context";
 import { getReleaseResources, getReleaseServicePorts } from "@/lib/cluster/kubernetes";
+import { enrichDeploymentRecipe } from "@/lib/catalog/metadata";
 import type { PodResources, ReleaseServicePort } from "@/lib/cluster/kubernetes";
 
 // ─── GET /api/deployments ─────────────────────────────────
@@ -34,13 +35,7 @@ export async function GET(req: Request) {
       },
       include: {
         recipe: {
-          select: {
-            slug: true,
-            displayName: true,
-            iconUrl: true,
-            category: true,
-            hasWebUI: true,
-          },
+          select: { slug: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -73,7 +68,7 @@ export async function GET(req: Request) {
     }
 
     const enriched = deployments.map((d) => ({
-      ...d,
+      ...enrichDeploymentRecipe(d),
       resources: resourceMap.get(d.name) ?? [],
       ports: portMap.get(d.name) ?? [],
     }));

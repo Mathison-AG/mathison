@@ -107,10 +107,10 @@ const TOOL_META: Record<
     icon: Trash2,
     pendingLabel: "Removing app...",
   },
-  requestApp: {
-    label: "Requesting App",
+  previewChanges: {
+    label: "Preview Changes",
     icon: Package,
-    pendingLabel: "Submitting request...",
+    pendingLabel: "Previewing changes...",
   },
   listWorkspaces: {
     label: "Your Projects",
@@ -348,8 +348,8 @@ function ToolResultContent({ toolName, output }: ToolResultProps) {
       return <UpdateResult output={output} />;
     case "uninstallApp":
       return <RemoveResult output={output} />;
-    case "requestApp":
-      return <RequestAppResult output={output} />;
+    case "previewChanges":
+      return <PreviewChangesResult output={output} />;
     default:
       return <GenericResult output={output} />;
   }
@@ -648,21 +648,42 @@ function RemoveResult({ output }: { output: unknown }) {
   );
 }
 
-// ─── Request app ─────────────────────────────────────────
+// ─── Preview changes ─────────────────────────────────────
 
-function RequestAppResult({ output }: { output: unknown }) {
+function PreviewChangesResult({ output }: { output: unknown }) {
   const data = output as {
     appName?: string;
     message?: string;
+    changes?: Array<{ setting: string; from: string; to: string }>;
+    note?: string;
+    error?: string;
   };
 
+  if (data.error) {
+    return (
+      <p className="text-xs text-destructive">{data.error}</p>
+    );
+  }
+
   return (
-    <div className="space-y-1">
-      {data.appName && (
-        <p className="font-medium">{data.appName}</p>
-      )}
+    <div className="space-y-2">
       {data.message && (
         <p className="text-xs text-muted-foreground">{data.message}</p>
+      )}
+      {data.changes && data.changes.length > 0 && (
+        <div className="space-y-1">
+          {data.changes.map((change) => (
+            <div key={change.setting} className="text-xs flex items-center gap-2">
+              <span className="font-mono font-medium">{change.setting}:</span>
+              <span className="text-muted-foreground">{change.from}</span>
+              <span className="text-muted-foreground">&rarr;</span>
+              <span className="text-foreground">{change.to}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {data.note && (
+        <p className="text-xs text-muted-foreground italic">{data.note}</p>
       )}
     </div>
   );

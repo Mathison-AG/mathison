@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { readK8sSecret } from "@/lib/deployer/secrets";
-
-import type { ConfigSchema, SecretsSchema } from "@/types/recipe";
+import { getRecipeMetadataOrFallback } from "@/lib/catalog/metadata";
+import { getRecipeDefinition } from "@/recipes/registry";
 
 // ─── GET /api/deployments/[id]/access ─────────────────────
 // Returns connection info for a deployment (credentials, host, port)
@@ -35,15 +35,7 @@ export async function GET(
         secretsRef: true,
         config: true,
         recipe: {
-          select: {
-            slug: true,
-            displayName: true,
-            category: true,
-            hasWebUI: true,
-            configSchema: true,
-            secretsSchema: true,
-            ingressConfig: true,
-          },
+          select: { slug: true },
         },
       },
     });
@@ -54,6 +46,10 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    // Get recipe metadata from registry
+    const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
+    const recipeDef = getRecipeDefinition(deployment.recipe.slug);
 
     // Read credentials from K8s secrets
     let credentials: Record<string, string> = {};
@@ -73,36 +69,40 @@ export async function GET(
 
     // Build connection info based on recipe type
     const config = (deployment.config ?? {}) as Record<string, unknown>;
-    const configSchema = deployment.recipe.configSchema as unknown as ConfigSchema;
-    const secretsSchema = deployment.recipe.secretsSchema as SecretsSchema;
-    const ingressConfig = deployment.recipe.ingressConfig as {
-      port?: number;
-    } | null;
 
-    // Only include connection-relevant config values (credentials, identifiers)
+    // Collect config values relevant to connections
     const CONNECTION_KEYS = new Set([
       "database", "username", "user", "db_name", "schema",
     ]);
     const configValues: Record<string, { label: string; value: string }> = {};
-    for (const [key, field] of Object.entries(configSchema)) {
-      if (!CONNECTION_KEYS.has(key)) continue;
-      const val = config[key] ?? field.default;
-      if (val !== undefined) {
-        configValues[key] = {
-          label: field.label || key,
-          value: String(val),
-        };
+    if (recipeDef) {
+      // Parse the config through the Zod schema to get defaults
+      const parsed = recipeDef.configSchema.safeParse(config);
+      const fullConfig = parsed.success
+        ? (parsed.data as Record<string, unknown>)
+        : config;
+
+      for (const key of CONNECTION_KEYS) {
+        const val = fullConfig[key];
+        if (val !== undefined) {
+          configValues[key] = {
+            label: key,
+            value: String(val),
+          };
+        }
       }
     }
 
     // Collect secret values with labels
     const secretValues: Record<string, { label: string; value: string }> = {};
-    for (const [key, field] of Object.entries(secretsSchema)) {
-      if (credentials[key]) {
-        secretValues[key] = {
-          label: field.description || key,
-          value: credentials[key],
-        };
+    if (recipeDef) {
+      for (const [key, field] of Object.entries(recipeDef.secrets)) {
+        if (credentials[key]) {
+          secretValues[key] = {
+            label: field.description || key,
+            value: credentials[key],
+          };
+        }
       }
     }
 
@@ -111,8 +111,8 @@ export async function GET(
     const host = "localhost";
     const port = deployment.localPort;
 
-    if (port && deployment.recipe.category === "database") {
-      switch (deployment.recipe.slug) {
+    if (port && recipeMeta.category === "database") {
+      switch (recipeMeta.slug) {
         case "postgresql": {
           const db = (config.database as string) || "app";
           const user = (config.username as string) || "app";
@@ -140,15 +140,15 @@ export async function GET(
     return NextResponse.json({
       id: deployment.id,
       name: deployment.name,
-      displayName: deployment.recipe.displayName,
-      category: deployment.recipe.category,
-      slug: deployment.recipe.slug,
-      hasWebUI: deployment.recipe.hasWebUI,
+      displayName: recipeMeta.displayName,
+      category: recipeMeta.category,
+      slug: recipeMeta.slug,
+      hasWebUI: recipeMeta.hasWebUI,
       status: deployment.status,
       url: deployment.url,
       host,
       port,
-      servicePort: ingressConfig?.port || deployment.servicePort,
+      servicePort: recipeDef?.ingress?.port || deployment.servicePort,
       config: configValues,
       secrets: secretValues,
       connectionString,

@@ -12,6 +12,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { incrementInstallCount } from "@/lib/catalog/service";
 import { requireRecipeDefinition } from "@/recipes/registry";
+import { getRecipeMetadataOrFallback } from "@/lib/catalog/metadata";
 import { generateSecretsFromDefinition, readK8sSecret } from "./secrets";
 import { resolveDependencies, resolveExistingDependencies } from "./dependencies";
 import { recordCreated, recordConfigChanged, recordRestarted, recordRemoved } from "./events";
@@ -131,10 +132,12 @@ export async function initiateDeployment(params: {
   const resources = recipe.build(buildCtx);
   const serializedResources = JSON.stringify(resources);
 
-  // 8. Find the DB recipe record for linking
-  const dbRecipe = await prisma.recipe.findFirst({
+  // 8. Find or create the DB recipe record for linking
+  const dbRecipe = await prisma.recipe.upsert({
     where: { slug: recipeSlug },
-    select: { id: true, version: true },
+    create: { slug: recipeSlug },
+    update: {},
+    select: { id: true },
   });
 
   // 9. Create Deployment record
@@ -142,8 +145,8 @@ export async function initiateDeployment(params: {
     data: {
       tenantId,
       workspaceId,
-      recipeId: dbRecipe?.id ?? "",
-      recipeVersion: dbRecipe?.version ?? 1,
+      recipeId: dbRecipe.id,
+      recipeVersion: 1,
       name: deploymentName,
       namespace: workspace.namespace,
       config: validatedConfig as unknown as Prisma.InputJsonValue,
@@ -174,9 +177,7 @@ export async function initiateDeployment(params: {
   });
 
   // Increment install count (fire-and-forget)
-  if (dbRecipe) {
-    incrementInstallCount(dbRecipe.id);
-  }
+  incrementInstallCount(recipeSlug);
 
   const depMsg =
     newDeploymentIds.length > 0
@@ -220,10 +221,7 @@ export async function initiateUpgrade(params: {
         },
       },
       recipe: {
-        select: {
-          slug: true,
-          displayName: true,
-        },
+        select: { slug: true },
       },
     },
   });
@@ -234,6 +232,7 @@ export async function initiateUpgrade(params: {
 
   // Get recipe from typed registry
   const recipe = requireRecipeDefinition(deployment.recipe.slug);
+  const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
 
   // Merge configs (new values override existing)
   const existingConfig = (deployment.config ?? {}) as Record<string, unknown>;
@@ -309,13 +308,13 @@ export async function initiateUpgrade(params: {
   });
 
   console.log(
-    `[engine] Upgrade queued for '${deployment.name}' (${deployment.recipe.displayName})`
+    `[engine] Upgrade queued for '${deployment.name}' (${recipeMeta.displayName})`
   );
 
   return {
     deploymentId,
     status: "DEPLOYING",
-    message: `Updating '${deployment.name}' (${deployment.recipe.displayName}) with new configuration.`,
+    message: `Updating '${deployment.name}' (${recipeMeta.displayName}) with new configuration.`,
   };
 }
 
@@ -333,13 +332,15 @@ export async function initiateRemoval(params: {
   const deployment = await prisma.deployment.findFirst({
     where: { id: deploymentId, tenantId },
     include: {
-      recipe: { select: { slug: true, displayName: true } },
+      recipe: { select: { slug: true } },
     },
   });
 
   if (!deployment) {
     throw new Error("Deployment not found");
   }
+
+  const removeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
 
   // Check for dependents within the same workspace
   const dependents = await prisma.deployment.findMany({
@@ -399,12 +400,12 @@ export async function initiateRemoval(params: {
     jobId: `undeploy-${deploymentId}`,
   });
 
-  console.log(`[engine] Removal queued for '${deployment.name}' (${deployment.recipe.displayName})`);
+  console.log(`[engine] Removal queued for '${deployment.name}' (${removeMeta.displayName})`);
 
   return {
     deploymentId,
     status: "DELETING",
-    message: `Removing '${deployment.name}' (${deployment.recipe.displayName}).`,
+    message: `Removing '${deployment.name}' (${removeMeta.displayName}).`,
   };
 }
 

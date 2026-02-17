@@ -83,55 +83,19 @@ enum WorkspaceStatus {
 }
 
 // ─── Service Catalog ─────────────────────────────────────
+// Recipe DB model is slim — only stores dynamic data (install counts, embeddings).
+// All static metadata (displayName, config schemas, descriptions, etc.) lives in
+// the typed recipe registry at src/recipes/.
 
 model Recipe {
-  id               String          @id @default(cuid())
-  slug             String          @unique
-  displayName      String          @map("display_name")
-  description      String
-  category         String // "database", "automation", "monitoring", "storage"
-  tags             String[]
-  iconUrl          String?         @map("icon_url")
-
-  // Source
-  sourceType       String          @default("helm") @map("source_type")
-  chartUrl         String          @map("chart_url")
-  chartVersion     String?         @map("chart_version")
-
-  // Configuration
-  configSchema     Json            @default("{}") @map("config_schema")
-  secretsSchema    Json            @default("{}") @map("secrets_schema")
-  valuesTemplate   String          @default("") @map("values_template")
-  dependencies     Json            @default("[]")
-  ingressConfig    Json            @default("{}") @map("ingress_config")
-  resourceDefaults Json            @default("{}") @map("resource_defaults")
-  resourceLimits   Json            @default("{}") @map("resource_limits")
-  healthCheck      Json            @default("{}") @map("health_check")
-
-  // Consumer-facing
-  shortDescription  String?         @map("short_description")
-  useCases          String[]        @default([]) @map("use_cases")
-  gettingStarted    String?         @map("getting_started")
-  screenshots       String[]        @default([])
-  websiteUrl        String?         @map("website_url")
-  documentationUrl  String?         @map("documentation_url")
-  installCount      Int             @default(0) @map("install_count")
-  featured          Boolean         @default(false)
-  hasWebUI          Boolean         @default(false) @map("has_web_ui")
-
-  // AI
-  aiHints          Json            @default("{}") @map("ai_hints")
-  embedding        Unsupported("vector(1536)")?
-
-  // Metadata
-  tier             RecipeTier      @default(COMMUNITY)
-  status           RecipeStatus    @default(DRAFT)
-  createdById      String?         @map("created_by_id")
-  version          Int             @default(1)
-  deployments      Deployment[]
-  versions         RecipeVersion[]
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  installCount  Int          @default(0) @map("install_count")
+  featured      Boolean      @default(false)
+  embedding     Unsupported("vector(1536)")?
+  deployments   Deployment[]
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
   @@map("recipes")
 }
@@ -146,19 +110,6 @@ enum RecipeStatus {
   DRAFT
   PUBLISHED
   DEPRECATED
-}
-
-model RecipeVersion {
-  id        String   @id @default(cuid())
-  recipeId  String   @map("recipe_id")
-  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
-  version   Int
-  snapshot  Json // Full recipe data at this version
-  changedBy String?  @map("changed_by")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@unique([recipeId, version])
-  @@map("recipe_versions")
 }
 
 // ─── Stacks (bundled recipes) ────────────────────────────
