@@ -37,13 +37,14 @@ export interface ResolvedDependencies {
 
 // ─── Ingress Context Builder ──────────────────────────────
 
-function buildIngressContext(): IngressContext | undefined {
-  const domain = process.env.MATHISON_BASE_DOMAIN;
-  if (!domain || process.env.INGRESS_ENABLED !== "true") {
+function buildIngressContext(workspaceSlug: string): IngressContext | undefined {
+  const baseDomain = process.env.MATHISON_BASE_DOMAIN;
+  if (!baseDomain || process.env.INGRESS_ENABLED !== "true") {
     return undefined;
   }
   return {
-    domain,
+    domain: `apps.${baseDomain}`,
+    workspaceSlug,
     tlsEnabled: process.env.TLS_ENABLED === "true",
     ingressClass: process.env.INGRESS_CLASS || "nginx",
     tlsClusterIssuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod",
@@ -63,9 +64,10 @@ export async function resolveDependencies(params: {
   tenantId: string;
   workspaceId: string;
   workspaceNamespace: string;
+  workspaceSlug: string;
   recipe: RecipeDefinition<unknown>;
 }): Promise<ResolvedDependencies> {
-  const { tenantId, workspaceId, workspaceNamespace, recipe } = params;
+  const { tenantId, workspaceId, workspaceNamespace, workspaceSlug, recipe } = params;
 
   if (!recipe.dependencies || Object.keys(recipe.dependencies).length === 0) {
     return { resolved: {}, newDeploymentIds: [] };
@@ -134,6 +136,7 @@ export async function resolveDependencies(params: {
       tenantId,
       workspaceId,
       workspaceNamespace,
+      workspaceSlug,
       alias,
       dep,
       depRecipe,
@@ -221,6 +224,7 @@ async function deployDependency(params: {
   tenantId: string;
   workspaceId: string;
   workspaceNamespace: string;
+  workspaceSlug: string;
   alias: string;
   dep: { recipe: string; defaultConfig?: Record<string, unknown> };
   depRecipe: RecipeDefinition<unknown>;
@@ -229,6 +233,7 @@ async function deployDependency(params: {
     tenantId,
     workspaceId,
     workspaceNamespace,
+    workspaceSlug,
     alias,
     dep,
     depRecipe,
@@ -249,7 +254,7 @@ async function deployDependency(params: {
     deps: {},
     name: alias,
     namespace: workspaceNamespace,
-    ingress: buildIngressContext(),
+    ingress: buildIngressContext(workspaceSlug),
   };
 
   const resources = depRecipe.build(buildCtx);

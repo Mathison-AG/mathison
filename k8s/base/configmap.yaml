@@ -17,3 +17,11 @@ data:
   REDIS_URL: "redis://redis.mathison-system.svc.cluster.local:6379"
   # AUTH_URL: "https://mathison.example.com"     # Must match your Ingress hostname
   # MATHISON_BASE_DOMAIN: "example.com"          # Set per deployment
+
+  # ── Tenant App Ingress ──────────────────────────────────
+  # Enable to create real K8s Ingress resources for tenant apps.
+  # When disabled (default), apps use port-forwarding for local access.
+  # INGRESS_ENABLED: "true"
+  # INGRESS_CLASS: "nginx"                       # Ingress controller class
+  # TLS_ENABLED: "true"                          # Enable TLS via cert-manager
+  # TLS_CLUSTER_ISSUER: "letsencrypt-prod"       # cert-manager ClusterIssuer name

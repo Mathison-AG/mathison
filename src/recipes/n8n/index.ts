@@ -166,7 +166,7 @@ function build(ctx: BuildContext<N8nConfig>): KubernetesResource[] {
 
   // 6. Ingress (if context provided)
   if (ctx.ingress) {
-    const hostname = `n8n-${name}.${ctx.ingress.domain}`;
+    const hostname = `${name}-${ctx.ingress.workspaceSlug}.${ctx.ingress.domain}`;
 
     const ingressTls = ctx.ingress.tlsEnabled
       ? {
@@ -184,6 +184,11 @@ function build(ctx: BuildContext<N8nConfig>): KubernetesResource[] {
         path: "/",
         ingressClass: ctx.ingress.ingressClass,
         tls: ingressTls,
+        extraAnnotations: {
+          "nginx.ingress.kubernetes.io/proxy-buffering": "off",
+          "nginx.ingress.kubernetes.io/proxy-read-timeout": "300",
+          "nginx.ingress.kubernetes.io/proxy-send-timeout": "300",
+        },
       })
     );
   }

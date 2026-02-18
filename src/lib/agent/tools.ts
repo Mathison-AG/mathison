@@ -451,6 +451,7 @@ export function getTools(tenantId: string, workspaceId: string) {
             appName: result.name,
             status: "installing",
             message: `${result.name} is being set up now. This usually takes about a minute.`,
+            ...(result.accessUrl ? { url: result.accessUrl } : {}),
           };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);

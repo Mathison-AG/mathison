@@ -141,16 +141,41 @@ function extractServiceInfo(
   return null;
 }
 
+// ─── Configuration ─────────────────────────────────────────
+
+const ingressEnabled = process.env.INGRESS_ENABLED === "true";
+
 // ─── Service discovery ────────────────────────────────────
 
 /**
  * Discover the primary K8s service from built resources and set up port-forwarding.
+ * In production (ingress enabled), skips port-forwarding — URL is set by the engine.
  */
 async function setupPortForward(
   deploymentId: string,
   namespace: string,
   resources: KubernetesResource[]
 ): Promise<string | null> {
+  // Production mode: ingress handles routing, no port-forward needed.
+  // The access URL is pre-computed by the engine and stored on the Deployment.
+  if (ingressEnabled) {
+    const svcInfo = extractServiceInfo(resources);
+    if (svcInfo) {
+      await prisma.deployment.update({
+        where: { id: deploymentId },
+        data: {
+          serviceName: svcInfo.serviceName,
+          servicePort: svcInfo.servicePort,
+        },
+      });
+    }
+    const dep = await prisma.deployment.findUnique({
+      where: { id: deploymentId },
+      select: { url: true },
+    });
+    return dep?.url ?? null;
+  }
+
   try {
     const svcInfo = extractServiceInfo(resources);
     if (!svcInfo) {
@@ -306,8 +331,10 @@ async function handleUndeploy(job: Job<UndeployJobData>): Promise<void> {
 
   console.log(`[worker] Undeploy: deployment ${deploymentId} from ${namespace}`);
 
-  // Stop port-forward before anything else
-  await stopPortForward(deploymentId);
+  // Stop port-forward before anything else (no-op in production mode)
+  if (!ingressEnabled) {
+    await stopPortForward(deploymentId);
+  }
 
   // Check if deployment record still exists
   const exists = await prisma.deployment.findUnique({
@@ -408,8 +435,10 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     return;
   }
 
-  // Stop existing port-forward during upgrade
-  await stopPortForward(deploymentId);
+  // Stop existing port-forward during upgrade (no-op in production mode)
+  if (!ingressEnabled) {
+    await stopPortForward(deploymentId);
+  }
 
   try {
     // 1. Update status → DEPLOYING
@@ -719,12 +748,15 @@ export function startWorker(): void {
 
   const healthServer = startHealthServer();
 
-  // ─── Port-forward health check interval ─────────────────
+  // ─── Port-forward health check interval (local dev only) ──
 
-  const portForwardCheckInterval = setInterval(checkPortForwards, 60_000);
-
-  // Run an initial port-forward check after a short delay (restore on worker restart)
-  setTimeout(checkPortForwards, 5_000);
+  let portForwardCheckInterval: ReturnType<typeof setInterval> | undefined;
+  if (!ingressEnabled) {
+    portForwardCheckInterval = setInterval(checkPortForwards, 60_000);
+    setTimeout(checkPortForwards, 5_000);
+  } else {
+    console.log(" Ingress mode: port-forwarding disabled");
+  }
 
   // ─── Event handlers ───────────────────────────────────────
 
@@ -747,9 +779,13 @@ export function startWorker(): void {
 
   async function shutdown(signal: string): Promise<void> {
     console.log(`[worker] Received ${signal}, shutting down gracefully...`);
-    clearInterval(portForwardCheckInterval);
+    if (portForwardCheckInterval) {
+      clearInterval(portForwardCheckInterval);
+    }
     healthServer.close();
-    await stopAllPortForwards();
+    if (!ingressEnabled) {
+      await stopAllPortForwards();
+    }
     await worker.close();
     console.log("[worker] Shutdown complete");
     process.exit(0);

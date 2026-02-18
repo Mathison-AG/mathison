@@ -121,13 +121,17 @@ MinIO is fully S3-compatible, so you can use it with:
 
   apiIngress: {
     enabled: true,
-    hostnameTemplate: "s3-{name}.{domain}",
+    hostnameTemplate: "s3-{name}-{workspace}.{domain}",
     port: 9000,
     serviceNameSuffix: "",
+    extraAnnotations: {
+      "nginx.ingress.kubernetes.io/proxy-body-size": "5g",
+      "nginx.ingress.kubernetes.io/proxy-buffering": "off",
+    },
   },
   consoleIngress: {
     enabled: true,
-    hostnameTemplate: "minio-{name}.{domain}",
+    hostnameTemplate: "{name}-{workspace}.{domain}",
     port: 9001,
     serviceNameSuffix: "-console",
   },

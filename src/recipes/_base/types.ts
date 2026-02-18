@@ -54,8 +54,10 @@ export interface ConnectionInfo {
 // ─── Ingress Context ──────────────────────────────────────
 
 export interface IngressContext {
-  /** Base domain (e.g. "example.com") */
+  /** Base domain for app hostnames (e.g. "apps.mathison.io") */
   domain: string;
+  /** Workspace slug — used in hostname generation for tenant isolation */
+  workspaceSlug: string;
   /** Whether TLS is enabled */
   tlsEnabled: boolean;
   /** Ingress class name (e.g. "nginx", "traefik") */
@@ -143,7 +145,7 @@ export interface ServicePortDefinition {
 export interface IngressDefinition {
   /** Whether this recipe supports ingress */
   enabled: boolean;
-  /** Hostname template (e.g. "n8n-{tenant}.{domain}") */
+  /** Hostname template — placeholders: {name}, {workspace}, {domain} */
   hostnameTemplate?: string;
   /** Service port to expose */
   port: number;
@@ -151,6 +153,8 @@ export interface IngressDefinition {
   path?: string;
   /** Suffix appended to release name for the K8s service name */
   serviceNameSuffix: string;
+  /** Extra annotations to add to the Ingress (e.g. SSE, WebSocket, large uploads) */
+  extraAnnotations?: Record<string, string>;
 }
 
 // ─── Data Export/Import ───────────────────────────────────

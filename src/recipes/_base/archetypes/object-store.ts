@@ -247,13 +247,16 @@ export function objectStore<TConfig>(
 
       // 5. Ingresses (if context provided)
       if (ctx.ingress) {
+        const ws = ctx.ingress.workspaceSlug;
+
         // API ingress
         if (descriptor.apiIngress?.enabled) {
           const apiHost = descriptor.apiIngress.hostnameTemplate
             ? descriptor.apiIngress.hostnameTemplate
                 .replace("{name}", name)
+                .replace("{workspace}", ws)
                 .replace("{domain}", ctx.ingress.domain)
-            : `s3-${name}.${ctx.ingress.domain}`;
+            : `s3-${name}-${ws}.${ctx.ingress.domain}`;
 
           const apiTls = ctx.ingress.tlsEnabled
             ? {
@@ -271,6 +274,7 @@ export function objectStore<TConfig>(
               ingressClass: ctx.ingress.ingressClass,
               tls: apiTls,
               component: "api",
+              extraAnnotations: descriptor.apiIngress.extraAnnotations,
             })
           );
         }
@@ -280,8 +284,9 @@ export function objectStore<TConfig>(
           const consoleHost = descriptor.consoleIngress.hostnameTemplate
             ? descriptor.consoleIngress.hostnameTemplate
                 .replace("{name}", name)
+                .replace("{workspace}", ws)
                 .replace("{domain}", ctx.ingress.domain)
-            : `${name}.${ctx.ingress.domain}`;
+            : `${name}-${ws}.${ctx.ingress.domain}`;
 
           const consoleTls = ctx.ingress.tlsEnabled
             ? {
@@ -299,6 +304,7 @@ export function objectStore<TConfig>(
               ingressClass: ctx.ingress.ingressClass,
               tls: consoleTls,
               component: "console",
+              extraAnnotations: descriptor.consoleIngress.extraAnnotations,
             })
           );
         }

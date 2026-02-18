@@ -222,6 +222,17 @@ kubectl -n mathison-system set image deployment/mathison-worker worker=mathison-
 
 The `mathison` ServiceAccount is shared by web and worker. The worker needs cluster-wide permissions to create/delete resources in tenant namespaces. See `rbac.yaml` for the full permission set.
 
+### Tenant App Ingress
+
+When users deploy apps (n8n, Uptime Kuma, MinIO, etc.), Mathison can create real K8s Ingress resources for each app. To enable this:
+
+1. **Set `INGRESS_ENABLED: "true"`** in `configmap.yaml`
+2. **Set `MATHISON_BASE_DOMAIN`** to your root domain (e.g. `mathison.io`). App URLs follow the pattern: `{app}-{workspace}.apps.{domain}` (e.g. `n8n-default.apps.mathison.io`)
+3. **Configure a wildcard DNS record**: `*.apps.{domain}` pointing to your ingress controller
+4. **Optionally set TLS**: `TLS_ENABLED: "true"` + `TLS_CLUSTER_ISSUER` for cert-manager integration
+
+When disabled (default), apps use kubectl port-forwarding for local access. Database apps (PostgreSQL, Redis) never get Ingress — they're accessed via internal K8s DNS.
+
 ### Never Commit Secrets
 
 `secret.yaml` contains empty placeholders. Never commit it with real values. Consider using Sealed Secrets, SOPS, or an external secrets operator for production.

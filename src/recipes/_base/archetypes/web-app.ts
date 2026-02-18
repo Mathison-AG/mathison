@@ -292,8 +292,9 @@ export function webApp<TConfig>(
         const hostname = descriptor.ingress.hostnameTemplate
           ? descriptor.ingress.hostnameTemplate
               .replace("{name}", name)
+              .replace("{workspace}", ctx.ingress.workspaceSlug)
               .replace("{domain}", ctx.ingress.domain)
-          : `${name}.${ctx.ingress.domain}`;
+          : `${name}-${ctx.ingress.workspaceSlug}.${ctx.ingress.domain}`;
 
         const ingressTls = ctx.ingress.tlsEnabled
           ? {
@@ -311,6 +312,7 @@ export function webApp<TConfig>(
             path: descriptor.ingress.path ?? "/",
             ingressClass: ctx.ingress.ingressClass,
             tls: ingressTls,
+            extraAnnotations: descriptor.ingress.extraAnnotations,
           })
         );
       }

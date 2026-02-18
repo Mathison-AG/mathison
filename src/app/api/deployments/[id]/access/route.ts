@@ -106,33 +106,55 @@ export async function GET(
       }
     }
 
+    // Determine access host/port — use ingress URL when available, else localhost port-forward
+    const hasIngressUrl = deployment.url?.startsWith("http") && !deployment.url.includes("localhost");
+    let host: string;
+    let port: number | null;
+
+    if (hasIngressUrl) {
+      // Production: parse hostname from ingress URL
+      const parsed = new URL(deployment.url!);
+      host = parsed.hostname;
+      port = deployment.servicePort;
+    } else {
+      // Local dev: port-forward to localhost
+      host = "localhost";
+      port = deployment.localPort;
+    }
+
     // Build connection string for common database types
     let connectionString: string | null = null;
-    const host = "localhost";
-    const port = deployment.localPort;
 
-    if (port && recipeMeta.category === "database") {
-      switch (recipeMeta.slug) {
-        case "postgresql": {
-          const db = (config.database as string) || "app";
-          const user = (config.username as string) || "app";
-          const pass = credentials.password || "***";
-          connectionString = `postgresql://${user}:${pass}@${host}:${port}/${db}`;
-          break;
-        }
-        case "redis": {
-          const pass = credentials.password;
-          connectionString = pass
-            ? `redis://:${pass}@${host}:${port}`
-            : `redis://${host}:${port}`;
-          break;
-        }
-        case "mysql": {
-          const db = (config.database as string) || "app";
-          const user = (config.username as string) || "root";
-          const pass = credentials.password || "***";
-          connectionString = `mysql://${user}:${pass}@${host}:${port}/${db}`;
-          break;
+    if (recipeMeta.category === "database") {
+      // Database connections use internal K8s DNS in production, localhost port-forward in dev
+      const dbHost = hasIngressUrl
+        ? `${deployment.serviceName}.${deployment.namespace}.svc.cluster.local`
+        : "localhost";
+      const dbPort = hasIngressUrl ? deployment.servicePort : deployment.localPort;
+
+      if (dbPort) {
+        switch (recipeMeta.slug) {
+          case "postgresql": {
+            const db = (config.database as string) || "app";
+            const user = (config.username as string) || "app";
+            const pass = credentials.password || "***";
+            connectionString = `postgresql://${user}:${pass}@${dbHost}:${dbPort}/${db}`;
+            break;
+          }
+          case "redis": {
+            const pass = credentials.password;
+            connectionString = pass
+              ? `redis://:${pass}@${dbHost}:${dbPort}`
+              : `redis://${dbHost}:${dbPort}`;
+            break;
+          }
+          case "mysql": {
+            const db = (config.database as string) || "app";
+            const user = (config.username as string) || "root";
+            const pass = credentials.password || "***";
+            connectionString = `mysql://${user}:${pass}@${dbHost}:${dbPort}/${db}`;
+            break;
+          }
         }
       }
     }

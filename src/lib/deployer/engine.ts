@@ -29,6 +29,7 @@ interface DeployResult {
   name: string;
   status: string;
   message: string;
+  accessUrl?: string;
   dependencyIds?: string[];
 }
 
@@ -46,17 +47,38 @@ interface RemoveResult {
 
 // ─── Ingress Context Builder ──────────────────────────────
 
-function buildIngressContext(): IngressContext | undefined {
-  const domain = process.env.MATHISON_BASE_DOMAIN;
-  if (!domain || process.env.INGRESS_ENABLED !== "true") {
+function buildIngressContext(workspaceSlug: string): IngressContext | undefined {
+  const baseDomain = process.env.MATHISON_BASE_DOMAIN;
+  if (!baseDomain || process.env.INGRESS_ENABLED !== "true") {
     return undefined;
   }
   return {
-    domain,
+    domain: `apps.${baseDomain}`,
+    workspaceSlug,
     tlsEnabled: process.env.TLS_ENABLED === "true",
     ingressClass: process.env.INGRESS_CLASS || "nginx",
     tlsClusterIssuer: process.env.TLS_CLUSTER_ISSUER || "letsencrypt-prod",
   };
+}
+
+/**
+ * Extract the access URL from built Ingress resources.
+ * Returns the first Ingress hostname (console for object stores, main for web apps).
+ */
+function extractAccessUrl(
+  resources: KubernetesResource[],
+  tlsEnabled: boolean
+): string | null {
+  for (const resource of resources) {
+    if (resource.kind !== "Ingress") continue;
+    const spec = (resource as { spec?: { rules?: Array<{ host?: string }> } }).spec;
+    const host = spec?.rules?.[0]?.host;
+    if (host) {
+      const protocol = tlsEnabled ? "https" : "http";
+      return `${protocol}://${host}`;
+    }
+  }
+  return null;
 }
 
 // ─── Deploy ───────────────────────────────────────────────
@@ -113,6 +135,7 @@ export async function initiateDeployment(params: {
     tenantId,
     workspaceId,
     workspaceNamespace: workspace.namespace,
+    workspaceSlug: workspace.slug,
     recipe,
   });
 
@@ -120,17 +143,23 @@ export async function initiateDeployment(params: {
   const secrets = generateSecretsFromDefinition(recipe.secrets);
 
   // 7. Build K8s resources
+  const ingressCtx = buildIngressContext(workspace.slug);
   const buildCtx: BuildContext<unknown> = {
     config: validatedConfig,
     secrets,
     deps: depInfo,
     name: deploymentName,
     namespace: workspace.namespace,
-    ingress: buildIngressContext(),
+    ingress: ingressCtx,
   };
 
   const resources = recipe.build(buildCtx);
   const serializedResources = JSON.stringify(resources);
+
+  // Compute access URL from Ingress resources (production) or leave null (local dev)
+  const accessUrl = ingressCtx
+    ? extractAccessUrl(resources, ingressCtx.tlsEnabled)
+    : null;
 
   // 8. Find or create the DB recipe record for linking
   const dbRecipe = await prisma.recipe.upsert({
@@ -154,6 +183,7 @@ export async function initiateDeployment(params: {
       managedResources: serializedResources,
       status: "PENDING",
       dependsOn: newDeploymentIds,
+      url: accessUrl,
     },
   });
 
@@ -193,6 +223,7 @@ export async function initiateDeployment(params: {
     name: deploymentName,
     status: "PENDING",
     message: `Deployment '${deploymentName}' (${recipe.displayName}) queued for installation${depMsg}.`,
+    accessUrl: accessUrl ?? undefined,
     dependencyIds: newDeploymentIds.length > 0 ? newDeploymentIds : undefined,
   };
 }
@@ -261,17 +292,23 @@ export async function initiateUpgrade(params: {
   });
 
   // Rebuild K8s resources with new config
+  const ingressCtx = buildIngressContext(deployment.workspace.slug);
   const buildCtx: BuildContext<unknown> = {
     config: validatedConfig,
     secrets,
     deps: depInfo,
     name: deployment.name,
     namespace: deployment.namespace,
-    ingress: buildIngressContext(),
+    ingress: ingressCtx,
   };
 
   const resources = recipe.build(buildCtx);
   const serializedResources = JSON.stringify(resources);
+
+  // Compute access URL from Ingress resources (production) or leave existing
+  const accessUrl = ingressCtx
+    ? extractAccessUrl(resources, ingressCtx.tlsEnabled)
+    : undefined;
 
   // Update DB
   await prisma.deployment.update({
@@ -280,6 +317,7 @@ export async function initiateUpgrade(params: {
       config: validatedConfig as unknown as Prisma.InputJsonValue,
       managedResources: serializedResources,
       status: "DEPLOYING",
+      ...(accessUrl ? { url: accessUrl } : {}),
     },
   });
 

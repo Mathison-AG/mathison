@@ -26,7 +26,8 @@ const envSchema = z.object({
   // Kubernetes
   KUBECONFIG: z.string().optional(),
 
-  // Cluster
+  // Cluster / Ingress
+  INGRESS_ENABLED: z.coerce.boolean().default(false),
   INGRESS_CLASS: z.string().default(""),
   TLS_ENABLED: z.coerce.boolean().default(true),
   TLS_CLUSTER_ISSUER: z.string().default("letsencrypt-prod"),

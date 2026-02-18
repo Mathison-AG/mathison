@@ -105,10 +105,15 @@ Create a public status page to share uptime with your team or users.`,
 
   ingress: {
     enabled: true,
-    hostnameTemplate: "status-{name}.{domain}",
+    hostnameTemplate: "{name}-{workspace}.{domain}",
     port: 3001,
     path: "/",
     serviceNameSuffix: "-uptime-kuma",
+    extraAnnotations: {
+      "nginx.ingress.kubernetes.io/proxy-buffering": "off",
+      "nginx.ingress.kubernetes.io/proxy-read-timeout": "300",
+      "nginx.ingress.kubernetes.io/proxy-send-timeout": "300",
+    },
   },
 
   healthCheck: () => ({

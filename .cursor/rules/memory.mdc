@@ -109,6 +109,18 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Pod label selectors**: Worker tries `app.kubernetes.io/instance=<deploymentName>` first (standard), then falls back to `release=<deploymentName>` (legacy).
 - Kind image loading: `kind load docker-image <image> --name mathison-dev` — essential for testing.
 
+## Tenant App Ingress (Production)
+
+- **Environment-aware**: `INGRESS_ENABLED=true` + `MATHISON_BASE_DOMAIN` enables real K8s Ingress resources for tenant apps.
+- **Hostname pattern**: `{app}-{workspace}.apps.{baseDomain}` (e.g. `n8n-default.apps.mathison.io`). Templates support `{name}`, `{workspace}`, `{domain}`.
+- **IngressContext**: Carries `domain` (= `apps.{baseDomain}`), `workspaceSlug`, `tlsEnabled`, `ingressClass`, `tlsClusterIssuer`.
+- **Engine computes URL**: `extractAccessUrl()` reads first Ingress hostname from built resources, stores as `Deployment.url`.
+- **Worker conditional port-forward**: `ingressEnabled` flag at module level. When true: `setupPortForward()` only stores service info (no kubectl), `stopPortForward()` calls skipped, health check loop disabled.
+- **Access API**: Detects ingress URLs (not containing `localhost`). Databases use K8s internal DNS for connection strings in production.
+- **Per-recipe annotations**: `IngressDefinition.extraAnnotations` for SSE/WebSocket/large uploads. Passed through archetypes to the ingress builder.
+- **TLS**: cert-manager integration via `TLS_CLUSTER_ISSUER`. Annotations + TLS spec added when `TLS_ENABLED=true`.
+- **Local dev unchanged**: No `INGRESS_ENABLED` → port-forwarding as before (kind cluster).
+
 ## Typed Recipe System (`src/recipes/`)
 
 - **RecipeDefinition<TConfig>**: Core interface — Zod config schema + `build()` producing `KubernetesResource[]`.
