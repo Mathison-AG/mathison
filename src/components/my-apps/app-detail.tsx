@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusIndicator } from "./status-indicator";
+import { DeploymentProgress } from "./deployment-progress";
 import { RemoveDialog } from "./remove-dialog";
 import { OpenButton } from "./open-button";
 import { ConnectionInfoButton } from "./connection-info";
@@ -119,6 +120,10 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
   const isTransitional = ["PENDING", "DEPLOYING", "DELETING"].includes(
     app.status
   );
+  const showProgress = ["PENDING", "DEPLOYING", "DELETING", "FAILED"].includes(
+    app.status
+  );
+  const hasDeps = app.dependsOn.length > 0;
 
   function handleRemove() {
     removeApp.mutate(app!.id, {
@@ -193,25 +198,38 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
         </div>
       </div>
 
-      <Separator />
+      {/* Progress card for transitional/failed states */}
+      {showProgress && (
+        <DeploymentProgress
+          status={app.status}
+          appName={app.recipe.displayName}
+          hasDeps={hasDeps}
+          errorMessage={app.errorMessage}
+        />
+      )}
 
-      {/* Info section */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex items-center gap-3 text-sm">
-          <Calendar className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-muted-foreground">Installed</p>
-            <p className="font-medium">{formatRelativeTime(app.createdAt)}</p>
+      {/* Info section (only when not showing progress) */}
+      {!showProgress && (
+        <>
+          <Separator />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex items-center gap-3 text-sm">
+              <Calendar className="size-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-muted-foreground">Installed</p>
+                <p className="font-medium">{formatRelativeTime(app.createdAt)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <Clock className="size-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-muted-foreground">Last updated</p>
+                <p className="font-medium">{formatRelativeTime(app.updatedAt)}</p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 text-sm">
-          <Clock className="size-4 text-muted-foreground shrink-0" />
-          <div>
-            <p className="text-muted-foreground">Last updated</p>
-            <p className="font-medium">{formatRelativeTime(app.updatedAt)}</p>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Resource Allocation */}
       {Boolean(app.config.cpu_request || app.config.memory_request) && (
