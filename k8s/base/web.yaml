@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mathison-web
+  namespace: mathison-system
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/component: web
+    app.kubernetes.io/managed-by: mathison
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mathison
+      app.kubernetes.io/component: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mathison
+        app.kubernetes.io/component: web
+        app.kubernetes.io/managed-by: mathison
+    spec:
+      serviceAccountName: mathison
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: mathison-web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: NODE_ENV
+            - name: MATHISON_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: MATHISON_MODE
+            - name: MATHISON_BASE_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: MATHISON_BASE_DOMAIN
+                  optional: true
+            - name: LLM_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: LLM_PROVIDER
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mathison-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: REDIS_URL
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mathison-secrets
+                  key: AUTH_SECRET
+            - name: AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mathison-config
+                  key: AUTH_URL
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mathison-secrets
+                  key: ANTHROPIC_API_KEY
+                  optional: true
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health?ready=true
+              port: http
+            periodSeconds: 10
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mathison-web
+  namespace: mathison-system
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/component: web
+    app.kubernetes.io/managed-by: mathison
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP

@@ -9,156 +9,233 @@ k8s/
 └── base/
     ├── namespace.yaml       # mathison-system namespace
     ├── rbac.yaml            # ServiceAccount + ClusterRole + ClusterRoleBinding
-    ├── configmap.yaml       # Non-secret configuration (DB host, Redis URL, etc.)
+    ├── configmap.yaml       # Non-secret configuration (Redis URL, mode, etc.)
     ├── secret.yaml          # Template for secrets (fill before applying)
     ├── postgres.yaml        # PostgreSQL 16 + pgvector StatefulSet + Services
     ├── redis.yaml           # Redis 7 StatefulSet + Services
-    ├── web.yaml             # Web Deployment + Service (future)
-    ├── worker.yaml          # Worker Deployment (future)
-    ├── ingress.yaml         # Ingress for web UI (future)
-    └── migrate-job.yaml     # One-shot migration Job (future)
+    ├── migrate-job.yaml     # One-shot migration + seed Job
+    ├── web.yaml             # Web Deployment (2 replicas) + Service
+    ├── worker.yaml          # Worker Deployment (1 replica)
+    └── ingress.yaml         # Ingress for web UI (nginx, SSE-optimized)
 ```
 
 ## Quick Start
 
-### 1. Create Namespace & RBAC
+### 1. Build Images
+
+```bash
+docker build --target web -t mathison-web .
+docker build --target worker -t mathison-worker .
+docker build --target migrate -t mathison-migrate .
+```
+
+For a kind cluster, load images after building:
+
+```bash
+kind load docker-image mathison-web --name mathison-dev
+kind load docker-image mathison-worker --name mathison-dev
+kind load docker-image mathison-migrate --name mathison-dev
+```
+
+### 2. Create Namespace & RBAC
 
 ```bash
 kubectl apply -f k8s/base/namespace.yaml
 kubectl apply -f k8s/base/rbac.yaml
 ```
 
-### 2. Configure Secrets
+### 3. Configure Secrets & Config
 
-Edit `k8s/base/secret.yaml` and fill in the values:
+Generate secrets and edit `k8s/base/secret.yaml`:
 
 ```bash
-# Generate secrets
-openssl rand -base64 32   # → AUTH_SECRET
-openssl rand -base64 24   # → POSTGRES_PASSWORD
+# Generate values
+PG_PASS=$(openssl rand -base64 24)
+AUTH=$(openssl rand -base64 32)
 
-# Then edit the file with your values
-$EDITOR k8s/base/secret.yaml
+echo "POSTGRES_PASSWORD: $PG_PASS"
+echo "AUTH_SECRET:       $AUTH"
+echo "DATABASE_URL:      postgresql://mathison:${PG_PASS}@postgres.mathison-system.svc.cluster.local:5432/mathison"
+echo "ANTHROPIC_API_KEY: <your key>"
 ```
 
-Apply config and secrets:
+Fill in the values in `secret.yaml`, then configure `configmap.yaml`:
+- Uncomment and set `AUTH_URL` to match your Ingress hostname (e.g. `https://mathison.example.com`)
+- Uncomment and set `MATHISON_BASE_DOMAIN` if needed
+
+Apply both:
 
 ```bash
 kubectl apply -f k8s/base/configmap.yaml
 kubectl apply -f k8s/base/secret.yaml
 ```
 
-### 3. Deploy PostgreSQL & Redis
+### 4. Deploy Backing Services
 
 ```bash
 kubectl apply -f k8s/base/postgres.yaml
 kubectl apply -f k8s/base/redis.yaml
 ```
 
-Wait for pods to become ready:
+Wait for both to become ready:
 
 ```bash
 kubectl -n mathison-system get pods -w
+# Wait until postgres-0 and redis-0 show 1/1 Ready
 ```
 
-### 4. Verify Backing Services
-
-**PostgreSQL**:
+### 5. Run Migrations
 
 ```bash
-# Pod is running and ready
-kubectl -n mathison-system get statefulset postgres
-
-# Connect and run a query
-kubectl -n mathison-system exec -it postgres-0 -- \
-  psql -U mathison -c "SELECT 1"
-
-# pgvector extension is loaded
-kubectl -n mathison-system exec -it postgres-0 -- \
-  psql -U mathison -c "SELECT * FROM pg_extension WHERE extname = 'vector'"
+kubectl apply -f k8s/base/migrate-job.yaml
 ```
 
-**Redis**:
+Watch the job:
 
 ```bash
-# Pod is running and ready
-kubectl -n mathison-system get statefulset redis
-
-# Ping
-kubectl -n mathison-system exec -it redis-0 -- redis-cli ping
+kubectl -n mathison-system logs -f job/mathison-migrate
+# Should end with "Done."
 ```
 
-**Service DNS** (from any pod in the namespace):
-
-```
-postgres.mathison-system.svc.cluster.local:5432
-redis.mathison-system.svc.cluster.local:6379
-```
-
-### 5. Verify RBAC
+Wait for completion:
 
 ```bash
-kubectl auth can-i create namespaces \
-  --as=system:serviceaccount:mathison-system:mathison
-
-kubectl auth can-i create deployments \
-  --as=system:serviceaccount:mathison-system:mathison \
-  --all-namespaces
-
-kubectl auth can-i get pods/log \
-  --as=system:serviceaccount:mathison-system:mathison \
-  --all-namespaces
-
-kubectl auth can-i create pods/exec \
-  --as=system:serviceaccount:mathison-system:mathison \
-  --all-namespaces
+kubectl -n mathison-system wait --for=condition=complete job/mathison-migrate --timeout=120s
 ```
 
-All commands should return `yes`.
+> **On new releases**: Delete the old job and re-apply before rolling out new images:
+> ```bash
+> kubectl -n mathison-system delete job mathison-migrate
+> kubectl apply -f k8s/base/migrate-job.yaml
+> ```
 
-## Connection Strings
+### 6. Deploy Application
 
-The web and worker pods will construct `DATABASE_URL` from the ConfigMap fields + secret password:
-
+```bash
+kubectl apply -f k8s/base/web.yaml
+kubectl apply -f k8s/base/worker.yaml
 ```
-DATABASE_URL=postgresql://mathison:<password>@postgres.mathison-system.svc.cluster.local:5432/mathison
-REDIS_URL=redis://redis.mathison-system.svc.cluster.local:6379
+
+Watch rollout:
+
+```bash
+kubectl -n mathison-system rollout status deployment/mathison-web
+kubectl -n mathison-system rollout status deployment/mathison-worker
 ```
 
-`REDIS_URL` is in the ConfigMap directly. `DATABASE_URL` must be assembled by the web/worker deployment (future step) since it contains a secret reference.
+### 7. Expose via Ingress
+
+Edit `k8s/base/ingress.yaml`:
+- Set your domain (replace `mathison.example.com`)
+- Uncomment `ingressClassName` and set it for your cluster (nginx, traefik, etc.)
+- Configure TLS (cert-manager or manual secret)
+
+```bash
+kubectl apply -f k8s/base/ingress.yaml
+```
+
+## Full Deploy Script
+
+```bash
+# 1. Namespace + RBAC
+kubectl apply -f k8s/base/namespace.yaml
+kubectl apply -f k8s/base/rbac.yaml
+
+# 2. Config + Secrets (edit values first!)
+kubectl apply -f k8s/base/configmap.yaml
+kubectl apply -f k8s/base/secret.yaml
+
+# 3. Backing services
+kubectl apply -f k8s/base/postgres.yaml
+kubectl apply -f k8s/base/redis.yaml
+kubectl -n mathison-system wait --for=condition=ready pod/postgres-0 --timeout=120s
+kubectl -n mathison-system wait --for=condition=ready pod/redis-0 --timeout=120s
+
+# 4. Migrations
+kubectl -n mathison-system delete job mathison-migrate --ignore-not-found
+kubectl apply -f k8s/base/migrate-job.yaml
+kubectl -n mathison-system wait --for=condition=complete job/mathison-migrate --timeout=120s
+
+# 5. Application
+kubectl apply -f k8s/base/web.yaml
+kubectl apply -f k8s/base/worker.yaml
+kubectl -n mathison-system rollout status deployment/mathison-web --timeout=120s
+kubectl -n mathison-system rollout status deployment/mathison-worker --timeout=120s
+
+# 6. Ingress
+kubectl apply -f k8s/base/ingress.yaml
+```
+
+## Verification
+
+```bash
+# All pods running
+kubectl -n mathison-system get pods
+
+# Web health (from inside the cluster or via port-forward)
+kubectl -n mathison-system port-forward svc/mathison-web 3000:3000 &
+curl http://localhost:3000/api/health
+curl http://localhost:3000/api/health?ready=true
+
+# Worker health
+kubectl -n mathison-system port-forward deployment/mathison-worker 8080:8080 &
+curl http://localhost:8080/health
+
+# Via Ingress (after DNS + TLS are configured)
+curl https://mathison.example.com/api/health
+```
 
 ## Resource Budgets
 
-| Service    | CPU Request | CPU Limit | Memory Request | Memory Limit | Storage |
-|------------|-------------|-----------|----------------|--------------|---------|
-| PostgreSQL | 250m        | 1         | 512Mi          | 1Gi          | 10Gi    |
-| Redis      | 50m         | 250m      | 64Mi           | 256Mi        | 1Gi     |
+| Component  | Replicas | CPU Request | CPU Limit | Memory Request | Memory Limit | Storage |
+|------------|----------|-------------|-----------|----------------|--------------|---------|
+| Web        | 2        | 200m        | 1         | 256Mi          | 512Mi        | —       |
+| Worker     | 1        | 100m        | 500m      | 256Mi          | 512Mi        | —       |
+| PostgreSQL | 1        | 250m        | 1         | 512Mi          | 1Gi          | 10Gi    |
+| Redis      | 1        | 50m         | 250m      | 64Mi           | 256Mi        | 1Gi     |
+| **Total**  |          | **800m**    | **2.75**  | **1.3Gi**      | **2.7Gi**    | **11Gi**|
 
-## RBAC Permissions Summary
+## Important Notes
 
-The `mathison` ClusterRole grants permissions needed by both web and worker pods:
+### AUTH_URL Must Match Ingress Hostname
 
-| Resource | Verbs | Purpose |
-|----------|-------|---------|
-| namespaces | create, get, list, delete | Workspace provisioning |
-| deployments, statefulsets, daemonsets | get, list, create, patch, delete | SSA apply/delete for tenant apps |
-| services | get, list, create, patch, delete | Service creation for tenant apps |
-| secrets | get, list, create, patch, delete | Secret management for tenant apps |
-| configmaps | get, list, create, patch, delete | ConfigMap management |
-| persistentvolumeclaims | get, list, create, delete | PVC management for StatefulSets |
-| ingresses | get, list, create, patch, delete | Tenant app ingress |
-| networkpolicies | get, list, create, patch, delete | Tenant network isolation |
-| resourcequotas | get, list, create, patch, delete | Workspace quotas |
-| pods | get, list, watch | Pod status monitoring |
-| pods/log | get | Log retrieval |
-| pods/exec | create | Data export/import |
-| nodes | get, list | Cluster stats |
+`AUTH_URL` in the ConfigMap must exactly match the URL users access (e.g. `https://mathison.example.com`). Mismatches break OAuth callbacks and CSRF checks.
 
-## Notes
+### SSE Streaming Through Ingress
 
-- All resources use the `app.kubernetes.io/managed-by: mathison` label.
-- PostgreSQL uses `pgvector/pgvector:pg16` which includes the vector extension. An init script creates the extension on first boot.
-- Redis uses AOF persistence (`appendonly yes`) so BullMQ jobs survive pod restarts.
-- Redis runs without authentication (protected by K8s network policies in production).
-- The `mathison` ServiceAccount is shared by web and worker pods. Split into `mathison-web` and `mathison-worker` if you need different permission levels later.
-- Never commit `secret.yaml` with real values. The file in this repo is a template with empty placeholders.
+The Ingress annotations disable proxy buffering (`proxy-buffering: "off"`) and extend timeouts to 300s. Without these, AI chat responses will appear to hang because the reverse proxy buffers the streaming response. **Test streaming explicitly after setup.**
+
+### Rolling Updates
+
+Both web and worker use `maxSurge: 1, maxUnavailable: 0` for zero-downtime deploys. The web is stateless. The worker processes in-flight BullMQ jobs to completion during graceful shutdown (60s termination grace period).
+
+### Image Tags
+
+All manifests default to `:latest`. For production, pin to a specific tag or digest:
+
+```bash
+kubectl -n mathison-system set image deployment/mathison-web web=mathison-web:v1.0.0
+kubectl -n mathison-system set image deployment/mathison-worker worker=mathison-worker:v1.0.0
+```
+
+### RBAC
+
+The `mathison` ServiceAccount is shared by web and worker. The worker needs cluster-wide permissions to create/delete resources in tenant namespaces. See `rbac.yaml` for the full permission set.
+
+### Never Commit Secrets
+
+`secret.yaml` contains empty placeholders. Never commit it with real values. Consider using Sealed Secrets, SOPS, or an external secrets operator for production.
+
+## Connection Strings
+
+The `DATABASE_URL` in the Secret should be:
+
+```
+postgresql://mathison:<POSTGRES_PASSWORD>@postgres.mathison-system.svc.cluster.local:5432/mathison
+```
+
+`REDIS_URL` is in the ConfigMap:
+
+```
+redis://redis.mathison-system.svc.cluster.local:6379
+```

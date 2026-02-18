@@ -94,6 +94,20 @@ ai-k8s/                          # Workspace root = Next.js app
 │   ├── seed.ts                  # Seeds 5 recipes (postgresql, redis, n8n, uptime-kuma, minio)
 │   └── migrations/              # SQL migrations
 │
+├── k8s/
+│   ├── README.md                # Full deployment guide
+│   └── base/                    # Plain YAML manifests (no Helm/Kustomize)
+│       ├── namespace.yaml       # mathison-system namespace
+│       ├── rbac.yaml            # ServiceAccount + ClusterRole + Binding
+│       ├── configmap.yaml       # Non-secret config (Redis URL, mode, LLM provider)
+│       ├── secret.yaml          # Template for secrets (DATABASE_URL, AUTH_SECRET, etc.)
+│       ├── postgres.yaml        # PostgreSQL 16 + pgvector StatefulSet + Services
+│       ├── redis.yaml           # Redis 7 StatefulSet + Services
+│       ├── migrate-job.yaml     # One-shot Job: prisma migrate + seed
+│       ├── web.yaml             # Web Deployment (2 replicas) + ClusterIP Service
+│       ├── worker.yaml          # Worker Deployment (1 replica)
+│       └── ingress.yaml         # Ingress with nginx SSE annotations
+│
 ├── public/icons/                # Service icons (postgresql.svg, redis.svg, etc.)
 ├── docker-compose.local.yml     # Postgres 16 + Redis 7
 ├── package.json                 # yarn, scripts: dev, build, worker, typecheck, lint
