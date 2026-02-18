@@ -9,10 +9,10 @@ k8s/
 └── base/
     ├── namespace.yaml       # mathison-system namespace
     ├── rbac.yaml            # ServiceAccount + ClusterRole + ClusterRoleBinding
-    ├── configmap.yaml       # Non-secret configuration
+    ├── configmap.yaml       # Non-secret configuration (DB host, Redis URL, etc.)
     ├── secret.yaml          # Template for secrets (fill before applying)
-    ├── postgres.yaml        # PostgreSQL StatefulSet (future)
-    ├── redis.yaml           # Redis StatefulSet (future)
+    ├── postgres.yaml        # PostgreSQL 16 + pgvector StatefulSet + Services
+    ├── redis.yaml           # Redis 7 StatefulSet + Services
     ├── web.yaml             # Web Deployment + Service (future)
     ├── worker.yaml          # Worker Deployment (future)
     ├── ingress.yaml         # Ingress for web UI (future)
@@ -33,8 +33,9 @@ kubectl apply -f k8s/base/rbac.yaml
 Edit `k8s/base/secret.yaml` and fill in the values:
 
 ```bash
-# Generate an auth secret
-openssl rand -base64 32
+# Generate secrets
+openssl rand -base64 32   # → AUTH_SECRET
+openssl rand -base64 24   # → POSTGRES_PASSWORD
 
 # Then edit the file with your values
 $EDITOR k8s/base/secret.yaml
@@ -47,30 +48,91 @@ kubectl apply -f k8s/base/configmap.yaml
 kubectl apply -f k8s/base/secret.yaml
 ```
 
-### 3. Verify RBAC
+### 3. Deploy PostgreSQL & Redis
 
 ```bash
-# ServiceAccount can create namespaces (workspace provisioning)
+kubectl apply -f k8s/base/postgres.yaml
+kubectl apply -f k8s/base/redis.yaml
+```
+
+Wait for pods to become ready:
+
+```bash
+kubectl -n mathison-system get pods -w
+```
+
+### 4. Verify Backing Services
+
+**PostgreSQL**:
+
+```bash
+# Pod is running and ready
+kubectl -n mathison-system get statefulset postgres
+
+# Connect and run a query
+kubectl -n mathison-system exec -it postgres-0 -- \
+  psql -U mathison -c "SELECT 1"
+
+# pgvector extension is loaded
+kubectl -n mathison-system exec -it postgres-0 -- \
+  psql -U mathison -c "SELECT * FROM pg_extension WHERE extname = 'vector'"
+```
+
+**Redis**:
+
+```bash
+# Pod is running and ready
+kubectl -n mathison-system get statefulset redis
+
+# Ping
+kubectl -n mathison-system exec -it redis-0 -- redis-cli ping
+```
+
+**Service DNS** (from any pod in the namespace):
+
+```
+postgres.mathison-system.svc.cluster.local:5432
+redis.mathison-system.svc.cluster.local:6379
+```
+
+### 5. Verify RBAC
+
+```bash
 kubectl auth can-i create namespaces \
   --as=system:serviceaccount:mathison-system:mathison
 
-# ServiceAccount can manage deployments in any namespace
 kubectl auth can-i create deployments \
   --as=system:serviceaccount:mathison-system:mathison \
   --all-namespaces
 
-# ServiceAccount can read pod logs
 kubectl auth can-i get pods/log \
   --as=system:serviceaccount:mathison-system:mathison \
   --all-namespaces
 
-# ServiceAccount can exec into pods (data export/import)
 kubectl auth can-i create pods/exec \
   --as=system:serviceaccount:mathison-system:mathison \
   --all-namespaces
 ```
 
 All commands should return `yes`.
+
+## Connection Strings
+
+The web and worker pods will construct `DATABASE_URL` from the ConfigMap fields + secret password:
+
+```
+DATABASE_URL=postgresql://mathison:<password>@postgres.mathison-system.svc.cluster.local:5432/mathison
+REDIS_URL=redis://redis.mathison-system.svc.cluster.local:6379
+```
+
+`REDIS_URL` is in the ConfigMap directly. `DATABASE_URL` must be assembled by the web/worker deployment (future step) since it contains a secret reference.
+
+## Resource Budgets
+
+| Service    | CPU Request | CPU Limit | Memory Request | Memory Limit | Storage |
+|------------|-------------|-----------|----------------|--------------|---------|
+| PostgreSQL | 250m        | 1         | 512Mi          | 1Gi          | 10Gi    |
+| Redis      | 50m         | 250m      | 64Mi           | 256Mi        | 1Gi     |
 
 ## RBAC Permissions Summary
 
@@ -95,6 +157,8 @@ The `mathison` ClusterRole grants permissions needed by both web and worker pods
 ## Notes
 
 - All resources use the `app.kubernetes.io/managed-by: mathison` label.
+- PostgreSQL uses `pgvector/pgvector:pg16` which includes the vector extension. An init script creates the extension on first boot.
+- Redis uses AOF persistence (`appendonly yes`) so BullMQ jobs survive pod restarts.
+- Redis runs without authentication (protected by K8s network policies in production).
 - The `mathison` ServiceAccount is shared by web and worker pods. Split into `mathison-web` and `mathison-worker` if you need different permission levels later.
-- The ClusterRole is cluster-scoped for simplicity. It can be tightened to per-namespace Roles created dynamically when workspaces are provisioned.
 - Never commit `secret.yaml` with real values. The file in this repo is a template with empty placeholders.

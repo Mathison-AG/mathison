@@ -9,4 +9,9 @@ metadata:
 data:
   MATHISON_MODE: "self-hosted"
   NODE_ENV: "production"
+  DATABASE_HOST: "postgres.mathison-system.svc.cluster.local"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "mathison"
+  DATABASE_USER: "mathison"
+  REDIS_URL: "redis://redis.mathison-system.svc.cluster.local:6379"
   # MATHISON_BASE_DOMAIN: "example.com"  # Set per deployment
