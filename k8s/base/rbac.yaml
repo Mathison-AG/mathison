@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mathison
+  namespace: mathison-system
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/managed-by: mathison
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mathison
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/managed-by: mathison
+rules:
+  # Workspace provisioning — create and manage tenant namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create", "get", "list", "delete"]
+
+  # Tenant app workloads — Server-Side Apply for deployments, statefulsets, daemonsets
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # Tenant app networking
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # Secret management for tenant apps
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # ConfigMap management for tenant apps
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # PVC management for StatefulSets
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "delete"]
+
+  # Tenant app ingress
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # Tenant network isolation
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # Workspace resource quotas
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
+    verbs: ["get", "list", "create", "patch", "delete"]
+
+  # Pod monitoring — status checks and health
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+
+  # Log retrieval
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+
+  # Data export/import via kubectl exec
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+
+  # Cluster stats — node info
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mathison
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/managed-by: mathison
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mathison
+subjects:
+  - kind: ServiceAccount
+    name: mathison
+    namespace: mathison-system

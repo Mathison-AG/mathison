@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mathison-config
+  namespace: mathison-system
+  labels:
+    app.kubernetes.io/name: mathison
+    app.kubernetes.io/managed-by: mathison
+data:
+  MATHISON_MODE: "self-hosted"
+  NODE_ENV: "production"
+  # MATHISON_BASE_DOMAIN: "example.com"  # Set per deployment
