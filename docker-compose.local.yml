@@ -80,6 +80,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
+      - "8080:8080"               # Worker health check server
       - "10000-10049:10000-10049"  # Port-forward range for app access
     volumes:
       - .:/app

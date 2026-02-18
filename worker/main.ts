@@ -8,6 +8,9 @@
  * Imported dynamically by index.ts AFTER env vars are loaded.
  */
 
+import http from "http";
+import net from "net";
+
 import { Worker, Job } from "bullmq";
 import { connection } from "../src/lib/queue/connection";
 import { JOB_NAMES } from "../src/lib/queue/jobs";
@@ -611,6 +614,66 @@ async function checkPortForwards(): Promise<void> {
   }
 }
 
+// ─── Health server ────────────────────────────────────────
+
+function redisTcpCheck(timeoutMs = 2000): Promise<void> {
+  const host = connection.host ?? "localhost";
+  const port = connection.port ?? 6379;
+
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port, timeout: timeoutMs }, () => {
+      socket.destroy();
+      resolve();
+    });
+    socket.on("error", (err) => {
+      socket.destroy();
+      reject(err);
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      reject(new Error("Redis connection timeout"));
+    });
+  });
+}
+
+function startHealthServer(): http.Server {
+  const healthPort = parseInt(process.env.WORKER_HEALTH_PORT || "8080", 10);
+
+  const server = http.createServer(async (_req, res) => {
+    if (_req.url !== "/health" && _req.url !== "/health/") {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+
+    let redisOk = false;
+    try {
+      await redisTcpCheck();
+      redisOk = true;
+    } catch {
+      // Redis unreachable
+    }
+
+    const status = redisOk ? "ok" : "unhealthy";
+    const statusCode = redisOk ? 200 : 503;
+
+    res.writeHead(statusCode, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        status,
+        queue: redisOk ? "connected" : "disconnected",
+        uptime: Math.floor(process.uptime()),
+      })
+    );
+  });
+
+  server.listen(healthPort, "0.0.0.0", () => {
+    console.log(` Health server: http://0.0.0.0:${healthPort}/health`);
+  });
+
+  return server;
+}
+
 // ─── Worker setup ─────────────────────────────────────────
 
 export function startWorker(): void {
@@ -652,6 +715,10 @@ export function startWorker(): void {
     }
   );
 
+  // ─── Health HTTP server ──────────────────────────────────
+
+  const healthServer = startHealthServer();
+
   // ─── Port-forward health check interval ─────────────────
 
   const portForwardCheckInterval = setInterval(checkPortForwards, 60_000);
@@ -681,6 +748,7 @@ export function startWorker(): void {
   async function shutdown(signal: string): Promise<void> {
     console.log(`[worker] Received ${signal}, shutting down gracefully...`);
     clearInterval(portForwardCheckInterval);
+    healthServer.close();
     await stopAllPortForwards();
     await worker.close();
     console.log("[worker] Shutdown complete");

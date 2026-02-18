@@ -36,6 +36,19 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 - **Auth cookie name**: Auth.js v5 uses `authjs.session-token` (not `next-auth.session-token`).
 - **Deployment deletion**: Worker now deletes DB records on successful undeploy (not soft-delete to STOPPED).
 
+## Production Build
+
+- **Production Dockerfile**: `Dockerfile` at workspace root. Three targets: `web`, `worker`, `migrate`.
+- **Build commands**: `docker build --target web -t mathison-web .` / `docker build --target worker -t mathison-worker .`
+- **Next.js standalone**: `output: "standalone"` in `next.config.ts`. Produces self-contained `server.js` + minimal node_modules.
+- **Worker bundled with esbuild**: ESM format (`--format=esm`), `--alias:@=./src` resolves path aliases. Prisma client/adapter and pg kept external (WASM + import.meta.url issues). Everything else inlined into single 5.7MB file.
+- **Worker entry point**: `worker/start.ts` (production, no dotenv) vs `worker/index.ts` (dev, loads .env.local).
+- **Prisma WASM pruning**: Non-PostgreSQL WASM compilers removed from worker image, saving ~60MB. Prisma Studio, engines, dev tools also excluded.
+- **Image sizes**: web ~250MB, worker ~240MB (target: <300MB each).
+- **Build-time env vars**: `AUTH_SECRET="build-time-placeholder"` needed during `next build` because server components transitively import `config.ts` which validates env at module load.
+- **Login page Suspense**: `useSearchParams()` requires `<Suspense>` wrapper or `next build` fails during static generation.
+- **kubectl only in worker**: Web target doesn't include kubectl (~50MB savings).
+
 ## Critical: Things That Will Bite You
 
 - **Prisma 7 import path**: `@/generated/prisma/client` â€” NOT `@prisma/client`. The old package no longer exports PrismaClient.

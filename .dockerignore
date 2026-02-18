@@ -27,6 +27,11 @@ Thumbs.db
 # Prisma generated client (regenerated inside container)
 src/generated
 
+# Docker dev files (not needed in production image)
+docker-compose*.yml
+Dockerfile.dev
+docker-entrypoint*.sh
+
 # Misc
 coverage
 *.tsbuildinfo
