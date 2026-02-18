@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Sparkles, X } from "lucide-react";
 
 import { useCatalog } from "@/hooks/use-catalog";
@@ -34,6 +34,7 @@ const CATEGORY_ORDER = [
 ];
 
 export default function AppStorePage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialCategory = searchParams.get("category") ?? "all";
   const fromWelcome = searchParams.has("category");
@@ -50,15 +51,8 @@ export default function AppStorePage() {
   );
 
   const { data: deployments } = useDeployments();
-  const {
-    phase,
-    deployment: installDeployment,
-    error: installError,
-    install,
-    reset
-  } = useInstall();
+  const { install, isPending, error: installError, reset } = useInstall();
 
-  // Build set of installed recipe slugs
   const installedSlugs = useMemo(() => {
     const slugs = new Set<string>();
     if (deployments) {
@@ -84,38 +78,33 @@ export default function AppStorePage() {
     setModalOpen(true);
   }, []);
 
-  const handleConfirmInstall = useCallback(() => {
-    if (selectedRecipe) {
-      install(selectedRecipe.slug);
+  const handleConfirmInstall = useCallback(async () => {
+    if (!selectedRecipe) return;
+    try {
+      const result = await install(selectedRecipe.slug);
+      setModalOpen(false);
+      router.push(`/apps/${result.deploymentId}`);
+    } catch {
+      // Error is captured by the mutation and shown in the modal
     }
-  }, [selectedRecipe, install]);
+  }, [selectedRecipe, install, router]);
 
   const handleModalClose = useCallback(
     (open: boolean) => {
-      setModalOpen(open);
-      if (
-        !open &&
-        (phase === "success" || phase === "idle" || phase === "error")
-      ) {
+      if (!open) {
         setSelectedRecipe(null);
         reset();
       }
+      setModalOpen(open);
     },
-    [phase, reset]
+    [reset]
   );
 
-  const handleReset = useCallback(() => {
-    reset();
-    setSelectedRecipe(null);
-  }, [reset]);
-
-  // Separate featured apps
   const featured = useMemo(
     () => (recipes ?? []).filter((r) => r.featured),
     [recipes]
   );
 
-  // Group by category
   const byCategory = useMemo(() => {
     const map: Record<string, Recipe[]> = {};
     for (const recipe of recipes ?? []) {
@@ -126,7 +115,6 @@ export default function AppStorePage() {
     return map;
   }, [recipes]);
 
-  // When searching or filtering by category, show flat grid
   const isFiltered = search.length > 0 || category !== "all";
 
   return (
@@ -163,7 +151,6 @@ export default function AppStorePage() {
       )}
 
       {isFiltered ? (
-        /* Filtered view: category chips + flat grid */
         <div className="space-y-6">
           <CategoryFilters
             selected={category}
@@ -177,9 +164,7 @@ export default function AppStorePage() {
           />
         </div>
       ) : (
-        /* Browse view: featured + categories */
         <div className="space-y-10">
-          {/* Featured */}
           {!isLoading && (
             <FeaturedApps
               recipes={featured}
@@ -188,7 +173,6 @@ export default function AppStorePage() {
             />
           )}
 
-          {/* Category rows */}
           {!isLoading &&
             CATEGORY_ORDER.map((cat) => {
               const catRecipes = byCategory[cat];
@@ -205,10 +189,8 @@ export default function AppStorePage() {
               );
             })}
 
-          {/* Loading state */}
           {isLoading && <AppGrid recipes={[]} isLoading />}
 
-          {/* Browse All section with filter chips */}
           {!isLoading && (recipes ?? []).length > 0 && (
             <section className="space-y-4">
               <h2 className="text-lg font-semibold">Browse All</h2>
@@ -226,16 +208,13 @@ export default function AppStorePage() {
         </div>
       )}
 
-      {/* Install Modal */}
       <InstallModal
         recipe={selectedRecipe}
         open={modalOpen}
         onOpenChange={handleModalClose}
-        phase={phase}
-        deployment={installDeployment}
+        isPending={isPending}
         error={installError}
         onConfirm={handleConfirmInstall}
-        onReset={handleReset}
       />
     </div>
   );

@@ -2,8 +2,10 @@
  * Workspace Manager
  *
  * CRUD operations for workspaces + K8s namespace lifecycle.
- * Each workspace maps to a K8s namespace: "{tenantSlug}-{workspaceSlug}".
+ * Each workspace maps to a K8s namespace: "mathison-{workspaceId}".
  */
+
+import { randomUUID } from "crypto";
 
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -66,14 +68,14 @@ function slugify(text: string): string {
 /**
  * Create a new workspace with a K8s namespace.
  *
- * Namespace naming: "{tenantSlug}-{workspaceSlug}"
+ * Namespace naming: "mathison-{workspaceId}"
  */
 export async function createWorkspace(
   input: CreateWorkspaceInput
 ): Promise<{ id: string; slug: string; name: string; namespace: string }> {
   const { tenantId, name, quota } = input;
 
-  // Look up tenant for slug
+  // Look up tenant for slug (needed for K8s labels)
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { slug: true },
@@ -94,19 +96,14 @@ export async function createWorkspace(
     throw new Error(`A workspace named '${slug}' already exists`);
   }
 
-  const namespace = `${tenant.slug}-${slug}`;
-
-  // Check namespace uniqueness globally
-  const existingNs = await prisma.workspace.findUnique({
-    where: { namespace },
-  });
-  if (existingNs) {
-    throw new Error(`Namespace '${namespace}' is already in use`);
-  }
+  // Pre-generate ID so we can derive namespace before DB insert
+  const workspaceId = randomUUID();
+  const namespace = `mathison-${workspaceId}`;
 
   // Create DB record
   const workspace = await prisma.workspace.create({
     data: {
+      id: workspaceId,
       tenantId,
       slug,
       name,

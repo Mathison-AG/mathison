@@ -52,6 +52,7 @@ interface WorkspaceOption {
   id: string;
   slug: string;
   name: string;
+  namespace: string;
 }
 
 interface SidebarProps {
@@ -166,14 +167,20 @@ export function Sidebar({
                     <DropdownMenuItem
                       key={ws.id}
                       onClick={() => handleWorkspaceSwitch(ws.id)}
+                      className="flex-col items-start"
                     >
-                      {ws.id === activeWorkspaceId && (
-                        <Check className="mr-2 size-4" />
-                      )}
-                      <span
-                        className={ws.id !== activeWorkspaceId ? "ml-6" : ""}
-                      >
-                        {ws.name}
+                      <div className="flex items-center w-full">
+                        {ws.id === activeWorkspaceId && (
+                          <Check className="mr-2 size-4 shrink-0" />
+                        )}
+                        <span
+                          className={ws.id !== activeWorkspaceId ? "ml-6" : ""}
+                        >
+                          {ws.name}
+                        </span>
+                      </div>
+                      <span className="ml-6 text-[10px] font-mono text-muted-foreground truncate w-full">
+                        {ws.namespace}
                       </span>
                     </DropdownMenuItem>
                   ))}
@@ -185,48 +192,62 @@ export function Sidebar({
             </TooltipContent>
           </Tooltip>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full justify-between gap-2 px-3 text-left font-normal"
-                disabled={isSwitching}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <Layers className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate text-sm">
-                    {activeWorkspace?.name ?? "Workspace"}
-                  </span>
-                </div>
-                <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="w-[var(--radix-dropdown-menu-trigger-width)]"
-            >
-              {workspaces.map((ws) => (
-                <DropdownMenuItem
-                  key={ws.id}
-                  onClick={() => handleWorkspaceSwitch(ws.id)}
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-between gap-2 px-3 text-left font-normal"
+                  disabled={isSwitching}
                 >
-                  {ws.id === activeWorkspaceId ? (
-                    <Check className="mr-2 size-4" />
-                  ) : (
-                    <span className="mr-2 w-4" />
-                  )}
-                  <span className="truncate">{ws.name}</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Layers className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-sm">
+                      {activeWorkspace?.name ?? "Workspace"}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="w-[var(--radix-dropdown-menu-trigger-width)]"
+              >
+                {workspaces.map((ws) => (
+                  <DropdownMenuItem
+                    key={ws.id}
+                    onClick={() => handleWorkspaceSwitch(ws.id)}
+                    className="flex-col items-start"
+                  >
+                    <div className="flex items-center w-full">
+                      {ws.id === activeWorkspaceId ? (
+                        <Check className="mr-2 size-4 shrink-0" />
+                      ) : (
+                        <span className="mr-2 w-4 shrink-0" />
+                      )}
+                      <span className="truncate">{ws.name}</span>
+                    </div>
+                    <span className="ml-6 text-[10px] font-mono text-muted-foreground truncate w-full">
+                      {ws.namespace}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer">
+                    <Settings className="mr-2 size-4" />
+                    Manage workspaces
+                  </Link>
                 </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings" className="cursor-pointer">
-                  <Settings className="mr-2 size-4" />
-                  Manage workspaces
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {activeWorkspace && (
+              <p className="px-3 mt-1 text-[10px] font-mono text-muted-foreground truncate" title={activeWorkspace.namespace}>
+                {activeWorkspace.namespace}
+              </p>
+            )}
+          </>
         )}
       </div>
 

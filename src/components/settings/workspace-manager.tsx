@@ -380,6 +380,9 @@ export function WorkspaceManager() {
                       {ws.status.toLowerCase()}
                     </Badge>
                   </div>
+                  <code className="block text-xs font-mono text-muted-foreground truncate" title={ws.namespace}>
+                    {ws.namespace}
+                  </code>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground">
                     <span>
                       {ws.deploymentCount} app

@@ -64,7 +64,7 @@ model Workspace {
   tenant      Tenant          @relation(fields: [tenantId], references: [id])
   slug        String          // unique within tenant
   name        String
-  namespace   String          @unique // K8s namespace: "{tenantSlug}-{workspaceSlug}"
+  namespace   String          @unique // K8s namespace: "mathison-{workspaceId}"
   quota       Json            @default("{}")
   status      WorkspaceStatus @default(ACTIVE)
   deployments Deployment[]

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Download, AlertCircle } from "lucide-react";
+import { Download, AlertCircle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,120 +12,36 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { InstallProgress } from "./install-progress";
-import { InstallSuccess } from "./install-success";
-import { FirstInstallCelebration } from "@/components/onboarding/first-install-celebration";
-import { useFirstInstall } from "@/hooks/use-first-install";
 
 import type { Recipe } from "@/types/recipe";
-import type { Deployment } from "@/types/deployment";
-import type { InstallPhase } from "@/hooks/use-install";
 
 interface InstallModalProps {
   recipe: Recipe | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  phase: InstallPhase;
-  deployment: Deployment | null;
+  isPending: boolean;
   error: string | null;
   onConfirm: () => void;
-  onReset: () => void;
 }
 
 export function InstallModal({
   recipe,
   open,
   onOpenChange,
-  phase,
-  deployment,
+  isPending,
   error,
-  onConfirm,
-  onReset
+  onConfirm
 }: InstallModalProps) {
-  const { isFirstInstall, markInstalled } = useFirstInstall();
-
   if (!recipe) return null;
 
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
-  const isInstalling = phase === "installing" || phase === "polling";
   const hasDeps = recipe.dependencies.length > 0;
 
-  function handleClose(nextOpen: boolean) {
-    if (!nextOpen) {
-      // If install is complete (success/error), reset on close
-      if (phase === "success" || phase === "error" || phase === "idle") {
-        if (phase === "success" && isFirstInstall) {
-          markInstalled();
-        }
-        onReset();
-      }
-      onOpenChange(false);
-    }
-  }
-
-  // First install celebration view
-  if (phase === "success" && isFirstInstall) {
-    return (
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">
-            {recipe.displayName} installed — your first app!
-          </DialogTitle>
-          <FirstInstallCelebration
-            appName={recipe.displayName}
-            appUrl={deployment?.url ?? null}
-            gettingStarted={recipe.gettingStarted}
-          />
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Success view
-  if (phase === "success") {
-    return (
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
-          <DialogTitle className="sr-only">
-            {recipe.displayName} installed
-          </DialogTitle>
-          <InstallSuccess
-            appName={recipe.displayName}
-            appUrl={deployment?.url ?? null}
-            gettingStarted={recipe.gettingStarted}
-          />
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Progress view
-  if (isInstalling) {
-    return (
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent
-          className="sm:max-w-md"
-          showCloseButton={false}
-          aria-describedby={undefined}
-        >
-          <DialogTitle className="sr-only">
-            Installing {recipe.displayName}
-          </DialogTitle>
-          <InstallProgress
-            appName={recipe.displayName}
-            hasDeps={hasDeps}
-            deployment={deployment}
-          />
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Confirmation view (idle or error)
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={isPending ? undefined : onOpenChange}>
       <DialogContent
         className="sm:max-w-md"
+        showCloseButton={!isPending}
         aria-describedby="install-dialog-desc"
       >
         <DialogHeader>
@@ -158,12 +74,25 @@ export function InstallModal({
         )}
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => handleClose(false)}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             Cancel
           </Button>
-          <Button onClick={onConfirm}>
-            <Download className="size-4" />
-            {phase === "error" ? "Try Again" : "Install"}
+          <Button onClick={onConfirm} disabled={isPending}>
+            {isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Installing...
+              </>
+            ) : (
+              <>
+                <Download className="size-4" />
+                {error ? "Try Again" : "Install"}
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
@@ -79,13 +81,15 @@ export async function POST(req: Request) {
         },
       });
 
-      // Create default workspace
+      // Create default workspace with pre-generated ID for namespace derivation
+      const workspaceId = randomUUID();
       const ws = await tx.workspace.create({
         data: {
+          id: workspaceId,
           tenantId: tenant.id,
           slug: "default",
           name: "Default",
-          namespace: `${slug}-default`,
+          namespace: `mathison-${workspaceId}`,
         },
       });
 

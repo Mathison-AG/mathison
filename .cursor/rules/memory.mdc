@@ -89,8 +89,9 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 
 ## Workspaces
 
-- **Workspace model**: Belongs to Tenant, maps to K8s namespace `{tenantSlug}-{workspaceSlug}`.
+- **Workspace model**: Belongs to Tenant, maps to K8s namespace `mathison-{workspaceId}`.
 - **Active workspace**: Resolved via cookie (`mathison-workspace`) → user's `activeWorkspaceId` in DB → first workspace fallback.
+- **Namespace convention**: `mathison-{workspaceId}` — workspace ID is pre-generated via `crypto.randomUUID()` so namespace can be set at creation time. Namespace shown in sidebar + settings UI for quick K8s lookup.
 - **Workspace context helper**: `getActiveWorkspace(tenantId, userId)` from `@/lib/workspace/context`.
 - **Deployments are workspace-scoped**: `Deployment.workspaceId` + unique constraint `[workspaceId, name]`.
 - **Deployment engine**: `initiateDeployment()` takes `workspaceId`, looks up `workspace.namespace`.

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Download,
@@ -17,8 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstallButton } from "./install-button";
-import { InstallProgress } from "./install-progress";
-import { InstallSuccess } from "./install-success";
 import { useInstall } from "@/hooks/use-install";
 
 import type { Recipe } from "@/types/recipe";
@@ -34,17 +33,18 @@ function formatInstallCount(count: number): string {
 }
 
 export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
+  const router = useRouter();
   const iconSrc = recipe.iconUrl || `/icons/${recipe.slug}.svg`;
-  const { phase, deployment, error, install } = useInstall();
-  const hasDeps = recipe.dependencies.length > 0;
+  const { install, isPending, error } = useInstall();
 
-  function handleInstall() {
-    install(recipe.slug);
+  async function handleInstall() {
+    try {
+      const result = await install(recipe.slug);
+      router.push(`/apps/${result.deploymentId}`);
+    } catch {
+      // Error is captured by the mutation and shown inline
+    }
   }
-
-  const showProgress = phase === "installing" || phase === "polling";
-  const showSuccess = phase === "success";
-  const showInstallButton = !showProgress && !showSuccess;
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
@@ -95,31 +95,27 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
         </div>
 
         <div className="shrink-0 flex flex-col items-end gap-2">
-          {showInstallButton && (
-            <>
-              {isInstalled ? (
-                <Link href="/apps">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="rounded-xl px-8 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/5"
-                  >
-                    <Check className="size-4" />
-                    Installed
-                  </Button>
-                </Link>
-              ) : (
-                <InstallButton
-                  phase={phase}
-                  onInstall={handleInstall}
-                  onRetry={handleInstall}
-                  size="lg"
-                  className="rounded-xl px-8"
-                />
-              )}
-              <span className="text-xs text-muted-foreground">Free</span>
-            </>
+          {isInstalled ? (
+            <Link href="/apps">
+              <Button
+                variant="outline"
+                size="lg"
+                className="rounded-xl px-8 border-green-500/30 text-green-600 dark:text-green-400 hover:bg-green-500/5"
+              >
+                <Check className="size-4" />
+                Installed
+              </Button>
+            </Link>
+          ) : (
+            <InstallButton
+              isPending={isPending}
+              error={error}
+              onInstall={handleInstall}
+              size="lg"
+              className="rounded-xl px-8"
+            />
           )}
+          <span className="text-xs text-muted-foreground">Free</span>
         </div>
       </div>
 
@@ -140,24 +136,6 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
             </button>
           </div>
         </div>
-      )}
-
-      {/* Install progress (replaces description area when installing) */}
-      {showProgress && (
-        <InstallProgress
-          appName={recipe.displayName}
-          hasDeps={hasDeps}
-          deployment={deployment}
-        />
-      )}
-
-      {/* Install success */}
-      {showSuccess && (
-        <InstallSuccess
-          appName={recipe.displayName}
-          appUrl={deployment?.url ?? null}
-          gettingStarted={recipe.gettingStarted}
-        />
       )}
 
       {/* Description */}
@@ -239,7 +217,7 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
         </>
       )}
 
-      {/* Screenshots placeholder */}
+      {/* Screenshots */}
       {recipe.screenshots.length > 0 && (
         <>
           <section className="space-y-3">
@@ -298,7 +276,6 @@ export function AppDetail({ recipe, isInstalled = false }: AppDetailProps) {
         </section>
       )}
 
-      {/* Bottom padding */}
       <div className="h-8" />
     </div>
   );
