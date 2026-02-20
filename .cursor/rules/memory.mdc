@@ -38,8 +38,8 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean â€
 
 ## Production Build
 
-- **Production Dockerfile**: `Dockerfile` at workspace root. Three targets: `web`, `worker`, `migrate`.
-- **Build commands**: `docker build --target web -t mathison-web .` / `docker build --target worker -t mathison-worker .`
+- **Production Dockerfiles**: Split into `Dockerfile.web`, `Dockerfile.worker`, `Dockerfile.migrate` at workspace root.
+- **Build commands**: `docker build -f Dockerfile.web -t mathison-web .` / `docker build -f Dockerfile.worker -t mathison-worker .` / `docker build -f Dockerfile.migrate -t mathison-migrate .`
 - **Next.js standalone**: `output: "standalone"` in `next.config.ts`. Produces self-contained `server.js` + minimal node_modules.
 - **Worker bundled with esbuild**: ESM format (`--format=esm`), `--alias:@=./src` resolves path aliases. Prisma client/adapter and pg kept external (WASM + import.meta.url issues). Everything else inlined into single 5.7MB file.
 - **Worker entry point**: `worker/start.ts` (production, no dotenv) vs `worker/index.ts` (dev, loads .env.local).

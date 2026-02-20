@@ -190,7 +190,9 @@ mathison/
 ├── .env.example                         # Documented env vars
 ├── .env.local                           # Local dev overrides (gitignored)
 ├── docker-compose.yaml                  # Local dev: postgres + redis
-├── Dockerfile                           # Production multi-stage build
+├── Dockerfile.web                       # Production: Next.js standalone
+├── Dockerfile.worker                    # Production: BullMQ worker
+├── Dockerfile.migrate                   # Production: Prisma migrations
 ├── next.config.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
