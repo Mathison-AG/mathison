@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.3...mathison-v0.1.4) (2026-02-20)
+
+
+### Bug Fixes
+
+* label tags ([643271a](https://github.com/Mathison-AG/mathison/commit/643271a4df1c1966ceb9822e25590603e4a50a5b))
+
 ## [0.1.3](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.2...mathison-v0.1.3) (2026-02-20)
 
 
