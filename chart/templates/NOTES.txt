@@ -1,0 +1,41 @@
+
+Mathison has been installed in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+🌐 Web UI:
+{{- if .Values.ingress.tls.enabled }}
+   https://{{ .Values.ingress.host }}
+{{- else }}
+   http://{{ .Values.ingress.host }}
+{{- end }}
+
+   Make sure DNS for {{ .Values.ingress.host }} points to your ingress controller.
+{{- else }}
+
+🌐 Web UI (port-forward):
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mathison.fullname" . }}-web 3000:3000
+   Then open http://localhost:3000
+{{- end }}
+
+📋 First-time setup:
+   1. Wait for the migration job to complete:
+      kubectl -n {{ .Release.Namespace }} wait --for=condition=complete job/{{ include "mathison.fullname" . }}-migrate --timeout=120s
+
+   2. Check all pods are running:
+      kubectl -n {{ .Release.Namespace }} get pods
+
+   3. Sign up at the web UI to create your first account.
+
+🔧 Health checks:
+   kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "mathison.fullname" . }}-web -- wget -qO- http://localhost:3000/api/health
+
+{{- if .Values.config.tenantIngress.enabled }}
+
+📦 Tenant app ingress is ENABLED.
+   Apps deployed by users will get real Ingress resources.
+   {{- if .Values.config.baseDomain }}
+   Pattern: {app}-{workspace}.apps.{{ .Values.config.baseDomain }}
+   Make sure *.apps.{{ .Values.config.baseDomain }} DNS points to your ingress controller.
+   {{- end }}
+{{- end }}

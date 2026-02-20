@@ -1,19 +1,10 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: mathison
-  namespace: mathison-system
-  labels:
-    app.kubernetes.io/name: mathison
-    app.kubernetes.io/managed-by: mathison
----
+{{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: mathison
+  name: {{ include "mathison.fullname" . }}
   labels:
-    app.kubernetes.io/name: mathison
-    app.kubernetes.io/managed-by: mathison
+    {{- include "mathison.labels" . | nindent 4 }}
 rules:
   # Workspace provisioning — create and manage tenant namespaces
   - apiGroups: [""]
@@ -79,19 +70,4 @@ rules:
   - apiGroups: [""]
     resources: ["nodes"]
     verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: mathison
-  labels:
-    app.kubernetes.io/name: mathison
-    app.kubernetes.io/managed-by: mathison
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: mathison
-subjects:
-  - kind: ServiceAccount
-    name: mathison
-    namespace: mathison-system
+{{- end }}

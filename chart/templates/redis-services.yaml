@@ -1,0 +1,38 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mathison.fullname" . }}-redis-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mathison.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "mathison.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: tcp-redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mathison.fullname" . }}-redis
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mathison.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mathison.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cache
+  ports:
+    - name: tcp-redis
+      port: 6379
+      targetPort: tcp-redis
+{{- end }}

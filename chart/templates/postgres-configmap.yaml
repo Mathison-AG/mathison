@@ -1,0 +1,13 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mathison.fullname" . }}-postgres-init
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mathison.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+data:
+  init-pgvector.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+{{- end }}

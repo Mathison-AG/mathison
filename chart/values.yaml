@@ -1,0 +1,201 @@
+# -- Override the chart name used in resource names
+nameOverride: ""
+# -- Fully override the generated resource names
+fullnameOverride: ""
+
+# -- Global image registry prefix (e.g. "ghcr.io/mathison-io")
+global:
+  imageRegistry: "ghcr.io/mathison-ag"
+
+# ── Container Images ─────────────────────────────────────────────
+
+image:
+  web:
+    repository: mathison-web
+    # -- Defaults to Chart.appVersion if empty
+    tag: ""
+    pullPolicy: IfNotPresent
+  worker:
+    repository: mathison-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  migrate:
+    repository: mathison-migrate
+    tag: ""
+    pullPolicy: IfNotPresent
+
+# -- Credentials for private registries
+imagePullSecrets: []
+# - name: regcred
+
+# ── Application Config ───────────────────────────────────────────
+
+config:
+  # -- Platform mode
+  mode: "self-hosted"
+  # -- LLM provider: anthropic, openai, or ollama
+  llmProvider: "anthropic"
+  # -- External URL users access (must match Ingress hostname, e.g. https://mathison.example.com)
+  authUrl: ""
+  # -- Base domain for tenant app ingress (e.g. example.com → apps get n8n-default.apps.example.com)
+  baseDomain: ""
+
+  # Tenant app ingress — creates real K8s Ingress resources for user-deployed apps
+  tenantIngress:
+    # -- Enable K8s Ingress for tenant apps (false = port-forwarding only)
+    enabled: false
+    # -- Ingress controller class for tenant app Ingresses
+    ingressClass: ""
+    # -- Enable TLS via cert-manager for tenant apps
+    tlsEnabled: false
+    # -- cert-manager ClusterIssuer name for tenant app TLS
+    tlsClusterIssuer: ""
+
+# ── Secrets ──────────────────────────────────────────────────────
+
+secrets:
+  # -- Session encryption key (generate: openssl rand -base64 32)
+  authSecret: ""
+  # -- Anthropic API key (required when llmProvider=anthropic)
+  anthropicApiKey: ""
+  # -- PostgreSQL password (generate: openssl rand -base64 24)
+  postgresPassword: ""
+  # -- Use an existing Secret instead of creating one. Must contain: AUTH_SECRET, ANTHROPIC_API_KEY, POSTGRES_PASSWORD, DATABASE_URL
+  existingSecret: ""
+
+# ── PostgreSQL ───────────────────────────────────────────────────
+
+postgresql:
+  # -- Deploy bundled PostgreSQL. Set to false to use an external database.
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  persistence:
+    # -- PVC size for PostgreSQL data
+    size: 10Gi
+    # -- StorageClass (empty = cluster default)
+    storageClass: ""
+
+  # External database (used when enabled=false)
+  external:
+    host: ""
+    port: 5432
+    database: mathison
+    user: mathison
+
+# ── Redis ────────────────────────────────────────────────────────
+
+redis:
+  # -- Deploy bundled Redis. Set to false to use an external Redis.
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  persistence:
+    size: 1Gi
+    storageClass: ""
+
+  # External Redis (used when enabled=false)
+  external:
+    # -- Full Redis URL (e.g. redis://user:pass@host:6379)
+    url: ""
+
+# ── Web ──────────────────────────────────────────────────────────
+
+web:
+  # -- Number of web replicas
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  # -- Additional environment variables for the web container
+  extraEnv: []
+  # -- Node selector for web pods
+  nodeSelector: {}
+  # -- Tolerations for web pods
+  tolerations: []
+  # -- Affinity rules for web pods
+  affinity: {}
+
+# ── Worker ───────────────────────────────────────────────────────
+
+worker:
+  # -- Number of worker replicas
+  replicas: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  terminationGracePeriodSeconds: 60
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ── Migration Job ────────────────────────────────────────────────
+
+migrate:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+
+# ── Ingress ──────────────────────────────────────────────────────
+
+ingress:
+  # -- Enable Ingress for the Mathison web UI
+  enabled: true
+  # -- Ingress controller class (nginx, traefik, etc.)
+  className: ""
+  # -- Hostname for the web UI
+  host: mathison.example.com
+  # -- Extra annotations (merged with SSE streaming defaults)
+  annotations: {}
+  tls:
+    # -- Enable TLS on the Ingress
+    enabled: false
+    # -- TLS secret name (cert-manager or manually provisioned)
+    secretName: mathison-tls
+
+# ── RBAC ─────────────────────────────────────────────────────────
+
+rbac:
+  # -- Create ClusterRole and ClusterRoleBinding for tenant app management
+  create: true
+
+# ── ServiceAccount ───────────────────────────────────────────────
+
+serviceAccount:
+  # -- Create a ServiceAccount
+  create: true
+  # -- Override the ServiceAccount name
+  name: ""
+  # -- Annotations on the ServiceAccount (e.g. for IRSA / Workload Identity)
+  annotations: {}

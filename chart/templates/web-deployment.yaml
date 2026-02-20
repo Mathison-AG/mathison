@@ -1,17 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mathison-web
-  namespace: mathison-system
+  name: {{ include "mathison.fullname" . }}-web
+  namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: mathison
+    {{- include "mathison.labels" . | nindent 4 }}
     app.kubernetes.io/component: web
-    app.kubernetes.io/managed-by: mathison
 spec:
-  replicas: 2
+  replicas: {{ .Values.web.replicas }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: mathison
+      {{- include "mathison.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: web
   strategy:
     type: RollingUpdate
@@ -21,16 +20,19 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: mathison
+        {{- include "mathison.labels" . | nindent 8 }}
         app.kubernetes.io/component: web
-        app.kubernetes.io/managed-by: mathison
     spec:
-      serviceAccountName: mathison
+      serviceAccountName: {{ include "mathison.serviceAccountName" . }}
       terminationGracePeriodSeconds: 30
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: web
-          image: mathison-web:latest
-          imagePullPolicy: IfNotPresent
+          image: {{ include "mathison.image" (dict "image" .Values.image.web "global" .Values.global "chart" .Chart) }}
+          imagePullPolicy: {{ .Values.image.web.pullPolicy }}
           ports:
             - name: http
               containerPort: 3000
@@ -39,51 +41,54 @@ spec:
             - name: NODE_ENV
               valueFrom:
                 configMapKeyRef:
-                  name: mathison-config
+                  name: {{ include "mathison.configMapName" . }}
                   key: NODE_ENV
             - name: MATHISON_MODE
               valueFrom:
                 configMapKeyRef:
-                  name: mathison-config
+                  name: {{ include "mathison.configMapName" . }}
                   key: MATHISON_MODE
-            - name: MATHISON_BASE_DOMAIN
-              valueFrom:
-                configMapKeyRef:
-                  name: mathison-config
-                  key: MATHISON_BASE_DOMAIN
-                  optional: true
             - name: LLM_PROVIDER
               valueFrom:
                 configMapKeyRef:
-                  name: mathison-config
+                  name: {{ include "mathison.configMapName" . }}
                   key: LLM_PROVIDER
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: mathison-secrets
+                  name: {{ include "mathison.secretName" . }}
                   key: DATABASE_URL
             - name: REDIS_URL
               valueFrom:
                 configMapKeyRef:
-                  name: mathison-config
+                  name: {{ include "mathison.configMapName" . }}
                   key: REDIS_URL
             - name: AUTH_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: mathison-secrets
+                  name: {{ include "mathison.secretName" . }}
                   key: AUTH_SECRET
             - name: AUTH_URL
               valueFrom:
                 configMapKeyRef:
-                  name: mathison-config
+                  name: {{ include "mathison.configMapName" . }}
                   key: AUTH_URL
+                  optional: true
+            - name: MATHISON_BASE_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "mathison.configMapName" . }}
+                  key: MATHISON_BASE_DOMAIN
                   optional: true
             - name: ANTHROPIC_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: mathison-secrets
+                  name: {{ include "mathison.secretName" . }}
                   key: ANTHROPIC_API_KEY
                   optional: true
+            {{- with .Values.web.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           startupProbe:
             httpGet:
               path: /api/health
@@ -103,30 +108,19 @@ spec:
               port: http
             periodSeconds: 10
             failureThreshold: 2
+          {{- with .Values.web.resources }}
           resources:
-            requests:
-              cpu: 200m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 512Mi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mathison-web
-  namespace: mathison-system
-  labels:
-    app.kubernetes.io/name: mathison
-    app.kubernetes.io/component: web
-    app.kubernetes.io/managed-by: mathison
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: mathison
-    app.kubernetes.io/component: web
-  ports:
-    - name: http
-      port: 3000
-      targetPort: http
-      protocol: TCP
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
