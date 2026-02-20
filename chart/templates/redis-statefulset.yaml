@@ -62,7 +62,7 @@ spec:
     - metadata:
         name: data
         labels:
-          {{- include "mathison.labels" . | nindent 10 }}
+          {{- include "mathison.selectorLabels" . | nindent 10 }}
           app.kubernetes.io/component: cache
       spec:
         accessModes: ["ReadWriteOnce"]
