@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.4...mathison-v0.1.5) (2026-02-20)
+
+
+### Bug Fixes
+
+* better pipeline ([905a971](https://github.com/Mathison-AG/mathison/commit/905a9714aab8af840d37d230d37fc23f7037e198))
+
 ## [0.1.4](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.3...mathison-v0.1.4) (2026-02-20)
 
 
