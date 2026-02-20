@@ -86,6 +86,32 @@ spec:
                   name: {{ include "mathison.secretName" . }}
                   key: ANTHROPIC_API_KEY
                   optional: true
+            {{- if .Values.config.tenantIngress.enabled }}
+            - name: INGRESS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "mathison.configMapName" . }}
+                  key: INGRESS_ENABLED
+                  optional: true
+            - name: INGRESS_CLASS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "mathison.configMapName" . }}
+                  key: INGRESS_CLASS
+                  optional: true
+            - name: TLS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "mathison.configMapName" . }}
+                  key: TLS_ENABLED
+                  optional: true
+            - name: TLS_CLUSTER_ISSUER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "mathison.configMapName" . }}
+                  key: TLS_CLUSTER_ISSUER
+                  optional: true
+            {{- end }}
             {{- with .Values.web.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
