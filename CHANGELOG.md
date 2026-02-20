@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.1...mathison-v0.1.2) (2026-02-20)
+
+
+### Bug Fixes
+
+* split dockerfile ([13d2e50](https://github.com/Mathison-AG/mathison/commit/13d2e5036cba85bd7271957b47d175cc27fa5127))
+
 ## [0.1.1](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.0...mathison-v0.1.1) (2026-02-20)
 
 
