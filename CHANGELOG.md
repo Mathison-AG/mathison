@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.5...mathison-v0.1.6) (2026-02-20)
+
+
+### Bug Fixes
+
+* drop arm64 support for now ([b2b912e](https://github.com/Mathison-AG/mathison/commit/b2b912e1f7a9fb7f9c81012da8fcedcc4ffa21bb))
+
 ## [0.1.5](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.4...mathison-v0.1.5) (2026-02-20)
 
 
