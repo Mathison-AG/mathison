@@ -9,6 +9,10 @@ on:
       version:
         description: "Version to build (without v prefix, e.g. 0.2.0)"
         required: true
+      skip_images:
+        description: "Skip image builds (chart-only release)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -32,9 +36,75 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
-  build-images:
+  detect-changes:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      images_needed: ${{ steps.check.outputs.images_needed }}
+      app_version: ${{ steps.check.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check what changed
+        id: check
+        run: |
+          VERSION=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            if [ "${{ github.event.inputs.skip_images }}" = "true" ]; then
+              echo "images_needed=false" >> "$GITHUB_OUTPUT"
+              # Find last tag to get the appVersion for existing images
+              PREV_TAG=$(git tag --sort=-v:refname | head -1)
+              PREV_VERSION="${PREV_TAG#*v}"
+              echo "app_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
+              echo "Manual dispatch with skip_images — chart only (appVersion: ${PREV_VERSION})"
+              exit 0
+            fi
+            echo "images_needed=true" >> "$GITHUB_OUTPUT"
+            echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${{ needs.release-please.outputs.version }}"
+          CURRENT_TAG="${{ needs.release-please.outputs.tag_name }}"
+
+          # Find previous release tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -1)
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found — building images"
+            echo "images_needed=true" >> "$GITHUB_OUTPUT"
+            echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Comparing ${PREV_TAG}..HEAD"
+
+          # Check if any files outside chart/ and release metadata changed
+          APP_CHANGES=$(git diff --name-only "${PREV_TAG}"..HEAD -- . \
+            ':!chart/' \
+            ':!CHANGELOG.md' \
+            ':!.release-please-manifest.json' \
+            ':!package.json')
+
+          if [ -n "$APP_CHANGES" ]; then
+            echo "App source changed — building images:"
+            echo "$APP_CHANGES"
+            echo "images_needed=true" >> "$GITHUB_OUTPUT"
+            echo "app_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            PREV_VERSION="${PREV_TAG#*v}"
+            echo "Only chart/release files changed — skipping image builds"
+            echo "Chart version: ${VERSION}, appVersion (existing images): ${PREV_VERSION}"
+            echo "images_needed=false" >> "$GITHUB_OUTPUT"
+            echo "app_version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-images:
+    needs: [release-please, detect-changes]
+    if: needs.detect-changes.outputs.images_needed == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -83,27 +153,32 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 
   helm-chart:
-    needs: [release-please, build-images]
-    if: needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [release-please, detect-changes, build-images]
+    if: |
+      !cancelled() && !failure() &&
+      (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: azure/setup-helm@v4
 
-      - name: Determine version
+      - name: Determine versions
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "chart=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=${{ needs.release-please.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "chart=${{ needs.release-please.outputs.version }}" >> "$GITHUB_OUTPUT"
           fi
+          echo "app=${{ needs.detect-changes.outputs.app_version }}" >> "$GITHUB_OUTPUT"
 
       - name: Update chart version
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.value }}/" chart/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.value }}\"/" chart/Chart.yaml
+          sed -i "s/^version:.*/version: ${{ steps.version.outputs.chart }}/" chart/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.app }}\"/" chart/Chart.yaml
+          echo "Chart version: ${{ steps.version.outputs.chart }}"
+          echo "App version (image tag): ${{ steps.version.outputs.app }}"
 
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
@@ -111,4 +186,4 @@ jobs:
       - name: Package and push chart
         run: |
           helm package chart/
-          helm push mathison-${{ steps.version.outputs.value }}.tgz oci://${{ env.IMAGE_PREFIX }}/charts
+          helm push mathison-${{ steps.version.outputs.chart }}.tgz oci://${{ env.IMAGE_PREFIX }}/charts
