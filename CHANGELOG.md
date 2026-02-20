@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.6...mathison-v0.1.7) (2026-02-20)
+
+
+### Bug Fixes
+
+* role fix for kuma ([0ad9551](https://github.com/Mathison-AG/mathison/commit/0ad95515cb3fbcc173d7cd57b8d8f8325c657725))
+
 ## [0.1.6](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.5...mathison-v0.1.6) (2026-02-20)
 
 
