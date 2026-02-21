@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.8...mathison-v0.1.9) (2026-02-21)
+
+
+### Bug Fixes
+
+* openclaw setup ([cee16f8](https://github.com/Mathison-AG/mathison/commit/cee16f85492b99380003e2b9064e5775d8e4c7b7))
+
 ## [0.1.8](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.7...mathison-v0.1.8) (2026-02-21)
 
 
