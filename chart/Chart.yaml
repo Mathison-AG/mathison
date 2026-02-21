@@ -2,8 +2,8 @@ apiVersion: v2
 name: mathison
 description: AI-first Kubernetes platform — deploy and manage apps through an AI chat agent
 type: application
-version: 0.1.10
-appVersion: 0.1.10
+version: 0.1.11
+appVersion: 0.1.11
 home: https://github.com/Mathison-AG/mathison
 keywords:
   - kubernetes
