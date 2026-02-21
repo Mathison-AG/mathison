@@ -53,11 +53,13 @@ export async function GET(
 
     // Read credentials from K8s secrets
     let credentials: Record<string, string> = {};
-    if (deployment.secretsRef) {
+    const hasRecipeSecrets = recipeDef && Object.keys(recipeDef.secrets ?? {}).length > 0;
+    const secretName = deployment.secretsRef ?? (hasRecipeSecrets ? `${deployment.name}-secret` : null);
+    if (secretName) {
       try {
         credentials = await readK8sSecret(
           deployment.namespace,
-          deployment.secretsRef
+          secretName
         );
       } catch (err) {
         console.warn(

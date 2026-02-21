@@ -278,7 +278,7 @@ async function deployDependency(params: {
       name: alias,
       namespace: workspaceNamespace,
       config: depConfig as unknown as Prisma.InputJsonValue,
-      secretsRef: null,
+      secretsRef: Object.keys(depRecipe.secrets ?? {}).length > 0 ? `${alias}-secret` : null,
       managedResources: serializedResources,
       status: "PENDING",
     },

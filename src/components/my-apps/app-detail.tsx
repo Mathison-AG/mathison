@@ -279,20 +279,26 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
         </>
       )}
 
-      {/* Connection Info for non-web-UI apps */}
-      {!app.recipe.hasWebUI && isRunning && (
+      {/* Connection Info — shown for all running apps (databases get connection strings, web apps get credentials) */}
+      {isRunning && (
         <>
           <Separator />
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold">Connection Details</h2>
+            <h2 className="text-lg font-semibold">
+              {app.recipe.hasWebUI ? "Credentials" : "Connection Details"}
+            </h2>
             <Card className="p-5">
               <div className="flex items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <p className="font-medium">
-                    Access your {app.recipe.displayName}
+                    {app.recipe.hasWebUI
+                      ? `Setup credentials for ${app.recipe.displayName}`
+                      : `Access your ${app.recipe.displayName}`}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    View host, port, credentials, and connection string.
+                    {app.recipe.hasWebUI
+                      ? "View tokens and passwords needed to configure this app."
+                      : "View host, port, credentials, and connection string."}
                   </p>
                 </div>
                 <ConnectionInfoButton

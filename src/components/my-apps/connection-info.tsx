@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, Check, Eye, EyeOff, Database } from "lucide-react";
+import { Copy, Check, Eye, EyeOff, Database, KeyRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -118,16 +118,22 @@ export function ConnectionInfo({
     enabled: open
   });
 
+  const isWebUI = data?.hasWebUI ?? false;
+  const hasSecrets = data ? Object.keys(data.secrets).length > 0 : false;
+  const Icon = isWebUI ? KeyRound : Database;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Database className="size-5" />
-            {appName} Connection Details
+            <Icon className="size-5" />
+            {appName} {isWebUI ? "Credentials" : "Connection Details"}
           </DialogTitle>
           <DialogDescription>
-            Use these details to connect to your {appName}.
+            {isWebUI
+              ? `Tokens and passwords needed to set up ${appName}.`
+              : `Use these details to connect to your ${appName}.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -141,8 +147,8 @@ export function ConnectionInfo({
             </div>
           ) : data ? (
             <div className="space-y-3 py-2">
-              {/* Host & Port */}
-              {data.port && (
+              {/* Host & Port — only for non-webUI apps */}
+              {!isWebUI && data.port && (
                 <>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -204,10 +210,15 @@ export function ConnectionInfo({
                 </div>
               )}
 
-              {/* No port yet */}
-              {!data.port && (
+              {/* No info available */}
+              {!isWebUI && !data.port && !hasSecrets && (
                 <p className="text-sm text-muted-foreground">
                   Connection details will be available once the app is running.
+                </p>
+              )}
+              {isWebUI && !hasSecrets && (
+                <p className="text-sm text-muted-foreground">
+                  No additional credentials needed — just open the app.
                 </p>
               )}
             </div>

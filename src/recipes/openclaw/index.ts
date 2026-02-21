@@ -79,13 +79,13 @@ export const openclaw: RecipeDefinition<OpenClawConfig> = webApp<OpenClawConfig>
 OpenClaw is your personal AI assistant — it connects to the messaging channels you already use and responds with the power of any LLM you choose.
 
 ### First steps
-1. Open OpenClaw from your dashboard (click "Open App")
-2. You'll see the **Control UI** — this is your gateway's dashboard
-3. Go to **Settings** and enter the **Gateway Token** shown during setup
-4. Pair your browser device when prompted
+1. Open the **Credentials** section below and copy your **Gateway Token**
+2. Click **Open** to launch the OpenClaw Control UI
+3. In the Control UI, go to **Overview** and paste the Gateway Token
+4. Click **Connect** — the health indicator should turn green
 
 ### Connect a messaging channel
-Go to the channel settings and follow the setup for your platform:
+Go to **Channels** in the Control UI and follow the setup for your platform:
 - **Telegram**: Create a bot via @BotFather, paste the token
 - **Discord**: Create a bot in the Developer Portal, paste the token
 - **WhatsApp**: Scan the QR code from the channel setup screen
@@ -125,6 +125,8 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
   image: "ghcr.io/openclaw/openclaw",
   imageTag: "latest",
   containerPort: 18789,
+
+  command: () => ["sh", "-c", "mkdir -p /home/node/.openclaw && echo '{\"gateway\":{\"bind\":\"lan\"}}' > /home/node/.openclaw/openclaw.json && exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"],
 
   env: buildEnv,
 

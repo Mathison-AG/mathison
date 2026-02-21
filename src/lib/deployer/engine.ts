@@ -179,7 +179,7 @@ export async function initiateDeployment(params: {
       name: deploymentName,
       namespace: workspace.namespace,
       config: validatedConfig as unknown as Prisma.InputJsonValue,
-      secretsRef: null, // Secrets are now part of the build() output
+      secretsRef: Object.keys(recipe.secrets ?? {}).length > 0 ? `${deploymentName}-secret` : null,
       managedResources: serializedResources,
       status: "PENDING",
       dependsOn: newDeploymentIds,
