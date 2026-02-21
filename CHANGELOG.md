@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.7...mathison-v0.1.8) (2026-02-21)
+
+
+### Features
+
+* **recipe:** openclaw ([3cb467a](https://github.com/Mathison-AG/mathison/commit/3cb467ad5f4eb678aafbcfb135b241fc082dec4c))
+
 ## [0.1.7](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.6...mathison-v0.1.7) (2026-02-20)
 
 
