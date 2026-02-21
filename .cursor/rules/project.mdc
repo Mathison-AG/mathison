@@ -38,6 +38,7 @@ Everything agent-related lives under `.cursor/`:
 - `testing.mdc` — E2E testing procedures, curl commands, browser verification, cleanup.
 
 ### Tasks (`.cursor/tasks/`) — Project management
+- **Roadmap**: `.cursor/tasks/roadmap/` — lightweight idea sketches, not yet refined into tasks
 - **Backlog**: `.cursor/tasks/backlog/` — upcoming tasks and feature specs
 - **Completed**: `.cursor/tasks/completed/` — finished tasks (historical reference)
 

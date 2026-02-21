@@ -15,7 +15,8 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **No summaries at the end of a task**: When a task is finished, do NOT give a summary of what was done. The user doesn't need to know implementation details. Just give clear, actionable testing instructions (what to check, URLs to visit, things to verify, exact commands/prompts to try).
 - **Review before completing**: Present clear testing instructions to the user. Do NOT move the task to `.cursor/tasks/completed/` until the user explicitly approves.
 - **Commit + complete on approval**: When the user confirms a task is complete, do all three together: (1) update progress/memory/architecture rules, (2) move the task file from `.cursor/tasks/backlog/` to `.cursor/tasks/completed/`, (3) `git add -A && git commit` with a descriptive message. This is a single wrap-up step — don't skip the commit.
-- **Task locations**: Backlog tasks live in `.cursor/tasks/backlog/`. Completed tasks live in `.cursor/tasks/completed/`.
+- **Task locations**: Roadmap ideas live in `.cursor/tasks/roadmap/` (compact sketches). Backlog tasks live in `.cursor/tasks/backlog/` (refined specs). Completed tasks live in `.cursor/tasks/completed/`.
+- **Roadmap → Backlog flow**: When an idea is ready to build, expand it into a full task spec in `backlog/` and delete the roadmap file.
 
 ## Development Environment
 
