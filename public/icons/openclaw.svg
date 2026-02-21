@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#E74C3C"/>
+  <g transform="translate(64,62)" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left pincer -->
+    <path d="M-8,-20 Q-28,-36 -30,-16 Q-32,0 -14,-4"/>
+    <!-- Right pincer -->
+    <path d="M8,-20 Q28,-36 30,-16 Q32,0 14,-4"/>
+    <!-- Body -->
+    <ellipse cx="0" cy="4" rx="14" ry="18" fill="#fff" fill-opacity="0.2" stroke="#fff"/>
+    <!-- Tail segments -->
+    <path d="M0,22 L0,34"/>
+    <path d="M-6,34 L0,40 L6,34"/>
+    <!-- Eyes -->
+    <circle cx="-6" cy="-4" r="2.5" fill="#fff" stroke="none"/>
+    <circle cx="6" cy="-4" r="2.5" fill="#fff" stroke="none"/>
+  </g>
+</svg>

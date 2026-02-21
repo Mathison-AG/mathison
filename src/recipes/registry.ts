@@ -10,6 +10,7 @@ import { redis } from "./redis";
 import { n8n } from "./n8n";
 import { uptimeKuma } from "./uptime-kuma";
 import { minio } from "./minio";
+import { openclaw } from "./openclaw";
 
 import type { RecipeDefinition } from "./_base/types";
 
@@ -49,6 +50,7 @@ register(redis as RecipeDefinition<unknown>);
 register(n8n as RecipeDefinition<unknown>);
 register(uptimeKuma as RecipeDefinition<unknown>);
 register(minio as RecipeDefinition<unknown>);
+register(openclaw as RecipeDefinition<unknown>);
 
 // ─── Public API ───────────────────────────────────────────
 
