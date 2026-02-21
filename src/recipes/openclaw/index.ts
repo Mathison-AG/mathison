@@ -126,7 +126,7 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
   imageTag: "latest",
   containerPort: 18789,
 
-  command: () => ["sh", "-c", "mkdir -p /home/node/.openclaw && echo '{\"gateway\":{\"bind\":\"lan\"}}' > /home/node/.openclaw/openclaw.json && exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"],
+  command: () => ["sh", "-c", "mkdir -p /home/node/.openclaw && echo '{\"gateway\":{\"bind\":\"lan\",\"controlUi\":{\"dangerouslyDisableDeviceAuth\":true,\"allowInsecureAuth\":true}}}' > /home/node/.openclaw/openclaw.json && exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"],
 
   env: buildEnv,
 

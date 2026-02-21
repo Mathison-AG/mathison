@@ -167,6 +167,7 @@ Common issues to watch for:
 - **Wrong entrypoint/CMD**: Check the image's actual Dockerfile CMD before overriding `command`
 - **Missing namespace**: Kind cluster was recreated but namespace wasn't re-provisioned
 - **Image pull errors**: Verify the image tag exists on the registry
+- **Localhost-only auth/pairing**: Some apps auto-approve localhost connections but require device pairing or extra auth for remote access. Port-forward testing (localhost) masks this. Check docs for device auth, pairing, or trusted-origin settings and disable them in the recipe config when the gateway token already provides authentication
 
 #### Verify deployment status in DB
 
