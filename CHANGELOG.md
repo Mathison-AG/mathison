@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.10...mathison-v0.1.11) (2026-02-21)
+
+
+### Bug Fixes
+
+* add roadmap logic to agent dev ([8459bae](https://github.com/Mathison-AG/mathison/commit/8459baee217e64b27bb51189f7a350c3131c7d84))
+* openclaw settings ([d8d11b1](https://github.com/Mathison-AG/mathison/commit/d8d11b176fd2202c480ee300f61d9b5f83f9ae8a))
+
 ## [0.1.10](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.9...mathison-v0.1.10) (2026-02-21)
 
 
