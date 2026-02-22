@@ -14,7 +14,13 @@
     "db:studio": "prisma studio",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "chat": "tsx scripts/chat-cli.ts"
+    "chat": "tsx scripts/chat-cli.ts",
+    "recipe:test": "tsx scripts/recipe-test.ts",
+    "recipe:test:remote": "./scripts/recipe-test-remote.sh",
+    "deploy:dev": "./scripts/deploy-dev.sh",
+    "deploy:dev:web": "./scripts/deploy-dev.sh web",
+    "deploy:dev:worker": "./scripts/deploy-dev.sh worker",
+    "deploy:dev:chart": "./scripts/deploy-dev.sh --chart-only"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.43",

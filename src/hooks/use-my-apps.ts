@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import type { Deployment, DeploymentDetail } from "@/types/deployment";
+import type { PodEvent } from "@/lib/cluster/kubernetes";
 
 // ─── List all user-installed apps ────────────────────────
 
@@ -107,6 +108,30 @@ export function useRestartApp() {
     },
     onError: (err) => {
       toast.error(err.message);
+    },
+  });
+}
+
+// ─── Pod events for a deployment ──────────────────────────
+
+export function useDeploymentEvents(id: string, status: string) {
+  const shouldFetch =
+    !!id && !["PENDING", "STOPPED"].includes(status);
+
+  return useQuery<PodEvent[]>({
+    queryKey: ["my-apps", id, "events"],
+    queryFn: async () => {
+      const res = await fetch(`/api/deployments/${id}/events`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.events ?? [];
+    },
+    enabled: shouldFetch,
+    refetchInterval: (query) => {
+      const events = query.state.data;
+      if (!events) return false;
+      const hasWarnings = events.some((e: PodEvent) => e.type === "Warning");
+      return hasWarnings ? 15000 : false;
     },
   });
 }

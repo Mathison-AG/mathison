@@ -56,6 +56,11 @@ rules:
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
 
+  # Event monitoring — diagnostics and auto-remediation
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+
   # Log retrieval
   - apiGroups: [""]
     resources: ["pods/log"]

@@ -15,9 +15,9 @@ import type { RecipeDefinition, BuildContext, EnvVar } from "../_base/types";
 
 const configSchema = z.object({
   storage_size: z.string().default("5Gi"),
-  cpu_request: z.string().default("250m"),
+  cpu_request: z.string().default("1"),
   memory_request: z.string().default("512Mi"),
-  cpu_limit: z.string().default("1"),
+  cpu_limit: z.string().default("2"),
   memory_limit: z.string().default("2Gi"),
 });
 
@@ -32,7 +32,6 @@ function buildEnv(ctx: BuildContext<OpenClawConfig>): EnvVar[] {
 
   const env: EnvVar[] = [
     { name: "NODE_ENV", value: "production" },
-    { name: "OPENCLAW_HOST", value: "0.0.0.0" },
   ];
 
   if (db) {
@@ -127,7 +126,7 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
   imageTag: "latest",
   containerPort: 18789,
 
-  command: () => ["sh", "-c", "mkdir -p /home/node/.openclaw && test -f /home/node/.openclaw/openclaw.json || echo '{\"gateway\":{\"controlUi\":{\"dangerouslyDisableDeviceAuth\":true,\"allowInsecureAuth\":true}}}' > /home/node/.openclaw/openclaw.json && exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured"],
+  command: () => ["sh", "-c", "mkdir -p /home/node/.openclaw && test -f /home/node/.openclaw/openclaw.json || echo '{\"gateway\":{\"bind\":\"lan\",\"controlUi\":{\"dangerouslyDisableDeviceAuth\":true,\"allowInsecureAuth\":true}}}' > /home/node/.openclaw/openclaw.json && exec docker-entrypoint.sh node openclaw.mjs gateway --allow-unconfigured --bind lan"],
 
   env: buildEnv,
 
@@ -146,11 +145,19 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
   runAsGroup: 1000,
   fsGroup: 1000,
 
+  startupProbe: {
+    type: "http",
+    port: 18789,
+    path: "/",
+    initialDelaySeconds: 10,
+    periodSeconds: 10,
+    timeoutSeconds: 5,
+    failureThreshold: 30,
+  },
   livenessProbe: {
     type: "http",
     port: 18789,
     path: "/",
-    initialDelaySeconds: 30,
     periodSeconds: 20,
     timeoutSeconds: 5,
     failureThreshold: 3,
@@ -159,7 +166,6 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
     type: "http",
     port: 18789,
     path: "/",
-    initialDelaySeconds: 15,
     periodSeconds: 10,
     timeoutSeconds: 5,
     failureThreshold: 3,

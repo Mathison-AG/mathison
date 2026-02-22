@@ -78,6 +78,7 @@ export interface ObjectStoreDescriptor<TConfig> {
   // Probes
   livenessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
   readinessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
+  startupProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
 
   // Ingress
   apiIngress?: IngressDefinition;
@@ -175,6 +176,11 @@ export function objectStore<TConfig>(
           ? descriptor.readinessProbe(config)
           : descriptor.readinessProbe;
 
+      const startupProbe =
+        typeof descriptor.startupProbe === "function"
+          ? descriptor.startupProbe(config)
+          : descriptor.startupProbe;
+
       const commandResult = descriptor.command?.(ctx);
       const argsResult = descriptor.args?.(ctx);
 
@@ -202,6 +208,7 @@ export function objectStore<TConfig>(
           ],
           livenessProbe,
           readinessProbe,
+          startupProbe,
           securityContext: {
             fsGroup: descriptor.fsGroup ?? 1001,
             ...(descriptor.runAsUser !== undefined && {

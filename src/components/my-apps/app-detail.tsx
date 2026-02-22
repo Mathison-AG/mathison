@@ -27,6 +27,7 @@ import { OpenButton } from "./open-button";
 import { ConnectionInfoButton } from "./connection-info";
 import { DataExportButton } from "./data-export-button";
 import { DataImportButton } from "./data-import-button";
+import { PodEvents } from "./pod-events";
 import { useMyApp, useRemoveApp, useRestartApp } from "@/hooks/use-my-apps";
 
 // ─── Time formatting ─────────────────────────────────────
@@ -207,6 +208,9 @@ export function AppDetail({ id, gettingStarted }: AppDetailProps) {
           errorMessage={app.errorMessage}
         />
       )}
+
+      {/* Pod events (warnings like probe failures, image pull errors) */}
+      <PodEvents deploymentId={app.id} status={app.status} />
 
       {/* Info section (only when not showing progress) */}
       {!showProgress && (

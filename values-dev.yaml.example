@@ -1,0 +1,44 @@
+# Dev deployment values — copy to values-dev.yaml and fill in your secrets.
+#
+# Mirrors the Helmfile config from the infra repo, but with resolved values
+# instead of Go templates. Used by: ./scripts/deploy-dev.sh
+#
+# 1. cp values-dev.yaml.example values-dev.yaml
+# 2. Replace YOUR_BASE_DOMAIN with your actual domain
+# 3. Fill in the three secrets
+# 4. ./scripts/deploy-dev.sh
+
+global:
+  imageRegistry: "ghcr.io/mathison-ag"
+
+image:
+  web:
+    pullPolicy: Always
+  worker:
+    pullPolicy: Always
+  migrate:
+    pullPolicy: Always
+
+config:
+  authUrl: "https://mathison.YOUR_BASE_DOMAIN"
+  baseDomain: "mathison.YOUR_BASE_DOMAIN"
+  tenantIngress:
+    enabled: true
+    ingressClass: "traefik"
+    tlsEnabled: true
+    tlsClusterIssuer: "letsencrypt-prod"
+
+secrets:
+  authSecret: ""              # MATHISON_AUTH_SECRET
+  anthropicApiKey: ""         # MATHISON_ANTHROPIC_API_KEY
+  postgresPassword: ""        # MATHISON_POSTGRES_PASSWORD
+
+ingress:
+  enabled: true
+  className: "traefik"
+  host: "mathison.YOUR_BASE_DOMAIN"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  tls:
+    enabled: true
+    secretName: "mathison-tls"

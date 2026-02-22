@@ -33,7 +33,11 @@ yarn-error.log*
 # env files
 .env
 .env.local
+.env.remote
 .env.*.local
+
+# dev deployment values (contains secrets)
+values-dev.yaml
 
 # vercel
 .vercel

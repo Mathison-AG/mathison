@@ -19,7 +19,8 @@ export type DeploymentAction =
   | "health_changed"
   | "removed"
   | "failed"
-  | "status_changed";
+  | "status_changed"
+  | "auto_remediation";
 
 interface RecordEventParams {
   deploymentId: string;
@@ -171,5 +172,27 @@ export function recordRemoved(params: {
     newState: {},
     reason: "User requested",
     triggeredBy: params.triggeredBy,
+  });
+}
+
+/** Record an auto-remediation attempt by the AI agent */
+export function recordAutoRemediation(params: {
+  deploymentId: string;
+  diagnosis: string;
+  action: string;
+  configChanges?: Record<string, unknown>;
+  success: boolean;
+}): Promise<void> {
+  return recordDeploymentEvent({
+    deploymentId: params.deploymentId,
+    action: "auto_remediation",
+    newState: {
+      diagnosis: params.diagnosis,
+      remediationAction: params.action,
+      configChanges: params.configChanges,
+      success: params.success,
+    },
+    reason: params.diagnosis,
+    triggeredBy: "system",
   });
 }

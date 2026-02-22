@@ -224,6 +224,16 @@ export interface PodInfo {
   age: string;
 }
 
+export interface PodEvent {
+  type: "Normal" | "Warning" | string;
+  reason: string;
+  message: string;
+  count: number;
+  firstTimestamp: string | null;
+  lastTimestamp: string | null;
+  source: string;
+}
+
 /**
  * List pods in a namespace, optionally filtered by label selector.
  */
@@ -250,11 +260,13 @@ export async function listPods(
 
 /**
  * Get logs from a pod (tail N lines). If pod has multiple containers, gets the first.
+ * Set `previous` to true to get logs from the last terminated container (essential for CrashLoopBackOff).
  */
 export async function getPodLogs(
   namespace: string,
   podName: string,
-  lines = 100
+  lines = 100,
+  previous = false
 ): Promise<string> {
   const api = getCoreApi();
 
@@ -263,12 +275,18 @@ export async function getPodLogs(
       name: podName,
       namespace,
       tailLines: lines,
+      previous,
     });
 
     return logs ?? "(no logs)";
   } catch (err: unknown) {
     if (isK8sError(err) && err.statusCode === 404) {
-      return `Pod '${podName}' not found in namespace '${namespace}'.`;
+      return previous
+        ? "(no previous container logs)"
+        : `Pod '${podName}' not found in namespace '${namespace}'.`;
+    }
+    if (isK8sError(err) && err.statusCode === 400 && previous) {
+      return "(no previous container logs)";
     }
     throw wrapK8sError("getPodLogs", err);
   }
@@ -303,6 +321,163 @@ export async function getReleaseLogs(
   }
 
   return logParts.join("\n\n");
+}
+
+/**
+ * Get logs from the previous terminated container for all pods matching a release.
+ * Essential for diagnosing CrashLoopBackOff where the current container has no output yet.
+ */
+export async function getReleasePreviousLogs(
+  namespace: string,
+  instanceName: string,
+  lines = 100
+): Promise<string> {
+  const pods = await listPods(
+    namespace,
+    `app.kubernetes.io/instance=${instanceName}`
+  );
+
+  if (pods.length === 0) {
+    return "(no pods found)";
+  }
+
+  const logParts: string[] = [];
+  for (const pod of pods) {
+    try {
+      const logs = await getPodLogs(namespace, pod.name, lines, true);
+      if (logs && !logs.startsWith("(no previous")) {
+        logParts.push(`─── ${pod.name} (previous) ───\n${logs}`);
+      }
+    } catch {
+      // Previous logs not available — normal for first-run pods
+    }
+  }
+
+  return logParts.length > 0 ? logParts.join("\n\n") : "(no previous container logs)";
+}
+
+// ─── Detailed pod diagnostics ─────────────────────────────
+
+export interface ContainerDiagnostics {
+  name: string;
+  ready: boolean;
+  restartCount: number;
+  state: "running" | "waiting" | "terminated" | "unknown";
+  stateReason?: string;
+  stateMessage?: string;
+  exitCode?: number;
+  lastState?: {
+    state: "running" | "waiting" | "terminated";
+    reason?: string;
+    exitCode?: number;
+  };
+}
+
+export interface DetailedPodDiagnostics {
+  name: string;
+  phase: string;
+  ready: boolean;
+  restarts: number;
+  age: string;
+  containers: ContainerDiagnostics[];
+  initContainers: ContainerDiagnostics[];
+}
+
+/**
+ * Get detailed pod diagnostics for a release — container states, exit codes,
+ * termination reasons, init container status. Much richer than PodInfo.
+ */
+export async function getDetailedPodDiagnostics(
+  namespace: string,
+  instanceName: string
+): Promise<DetailedPodDiagnostics[]> {
+  const api = getCoreApi();
+
+  try {
+    let pods: k8s.V1Pod[] = [];
+
+    const res = await api.listNamespacedPod({
+      namespace,
+      labelSelector: `app.kubernetes.io/instance=${instanceName}`,
+    });
+    pods = res.items ?? [];
+
+    if (pods.length === 0) {
+      const fallback = await api.listNamespacedPod({
+        namespace,
+        labelSelector: `release=${instanceName}`,
+      });
+      pods = fallback.items ?? [];
+    }
+
+    return pods.map(podToDetailedDiagnostics);
+  } catch (err: unknown) {
+    if (isK8sError(err) && err.statusCode === 404) {
+      return [];
+    }
+    throw wrapK8sError("getDetailedPodDiagnostics", err);
+  }
+}
+
+function containerStatusToDiagnostics(cs: k8s.V1ContainerStatus): ContainerDiagnostics {
+  const diag: ContainerDiagnostics = {
+    name: cs.name,
+    ready: cs.ready ?? false,
+    restartCount: cs.restartCount ?? 0,
+    state: "unknown",
+  };
+
+  if (cs.state?.running) {
+    diag.state = "running";
+  } else if (cs.state?.waiting) {
+    diag.state = "waiting";
+    diag.stateReason = cs.state.waiting.reason;
+    diag.stateMessage = cs.state.waiting.message;
+  } else if (cs.state?.terminated) {
+    diag.state = "terminated";
+    diag.stateReason = cs.state.terminated.reason;
+    diag.stateMessage = cs.state.terminated.message;
+    diag.exitCode = cs.state.terminated.exitCode;
+  }
+
+  if (cs.lastState?.terminated) {
+    diag.lastState = {
+      state: "terminated",
+      reason: cs.lastState.terminated.reason,
+      exitCode: cs.lastState.terminated.exitCode,
+    };
+  } else if (cs.lastState?.waiting) {
+    diag.lastState = {
+      state: "waiting",
+      reason: cs.lastState.waiting.reason,
+    };
+  }
+
+  return diag;
+}
+
+function podToDetailedDiagnostics(pod: k8s.V1Pod): DetailedPodDiagnostics {
+  const containerStatuses = pod.status?.containerStatuses ?? [];
+  const initContainerStatuses = pod.status?.initContainerStatuses ?? [];
+
+  const totalRestarts = containerStatuses.reduce(
+    (sum, cs) => sum + (cs.restartCount ?? 0),
+    0
+  );
+  const allReady = containerStatuses.length > 0 && containerStatuses.every((cs) => cs.ready === true);
+
+  const createdAt = pod.metadata?.creationTimestamp;
+  const age = createdAt ? formatAge(new Date(createdAt)) : "unknown";
+
+  return {
+    name: pod.metadata?.name ?? "unknown",
+    phase: pod.status?.phase ?? "Unknown",
+    ready: allReady,
+    restarts: totalRestarts,
+    age,
+    containers: containerStatuses.map(containerStatusToDiagnostics),
+    initContainers: initContainerStatuses.map(containerStatusToDiagnostics),
+  };
 }
 
 // ─── Deployment status ────────────────────────────────────
@@ -382,6 +557,58 @@ export async function getReleasePodStatus(
   } catch (err) {
     console.error(`[k8s] Failed to get pod status for ${instanceName}:`, err);
     return { pods: [] };
+  }
+}
+
+// ─── Pod Events ──────────────────────────────────────────
+
+/**
+ * Get K8s events for all pods belonging to a release.
+ * Returns Warning events first, sorted by last timestamp (most recent first).
+ */
+export async function getReleaseEvents(
+  namespace: string,
+  instanceName: string
+): Promise<PodEvent[]> {
+  try {
+    const core = getCoreApi();
+    const { pods } = await getReleasePodStatus(namespace, instanceName);
+    if (pods.length === 0) return [];
+
+    const podNames = new Set(pods.map((p) => p.name));
+
+    const { items } = await core.listNamespacedEvent({ namespace });
+
+    const events: PodEvent[] = [];
+    for (const event of items) {
+      const involvedName = event.involvedObject?.name;
+      if (!involvedName || !podNames.has(involvedName)) continue;
+
+      events.push({
+        type: event.type ?? "Normal",
+        reason: event.reason ?? "Unknown",
+        message: event.message ?? "",
+        count: event.count ?? 1,
+        firstTimestamp: event.firstTimestamp?.toISOString() ?? null,
+        lastTimestamp: event.lastTimestamp?.toISOString() ?? null,
+        source: [event.source?.component, event.source?.host]
+          .filter(Boolean)
+          .join("/"),
+      });
+    }
+
+    events.sort((a, b) => {
+      if (a.type === "Warning" && b.type !== "Warning") return -1;
+      if (a.type !== "Warning" && b.type === "Warning") return 1;
+      const aTime = a.lastTimestamp ?? a.firstTimestamp ?? "";
+      const bTime = b.lastTimestamp ?? b.firstTimestamp ?? "";
+      return bTime.localeCompare(aTime);
+    });
+
+    return events;
+  } catch (err) {
+    console.error(`[k8s] Failed to get events for ${instanceName}:`, err);
+    return [];
   }
 }
 

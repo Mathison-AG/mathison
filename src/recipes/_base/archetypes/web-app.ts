@@ -92,6 +92,7 @@ export interface WebAppDescriptor<TConfig> {
   // Probes
   livenessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
   readinessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
+  startupProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
 
   // Service
   servicePorts?: ServicePortDefinition[];
@@ -227,6 +228,11 @@ export function webApp<TConfig>(
           ? descriptor.readinessProbe(config)
           : descriptor.readinessProbe;
 
+      const startupProbe =
+        typeof descriptor.startupProbe === "function"
+          ? descriptor.startupProbe(config)
+          : descriptor.startupProbe;
+
       const commandResult = descriptor.command?.(ctx);
       const argsResult = descriptor.args?.(ctx);
 
@@ -260,6 +266,7 @@ export function webApp<TConfig>(
           volumes: k8sVolumes.length > 0 ? k8sVolumes : undefined,
           livenessProbe,
           readinessProbe,
+          startupProbe,
           securityContext: {
             fsGroup: descriptor.fsGroup ?? 1001,
             ...(descriptor.runAsUser !== undefined && {

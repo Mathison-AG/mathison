@@ -82,6 +82,7 @@ export interface DatabaseDescriptor<TConfig> {
   // Probes
   livenessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
   readinessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
+  startupProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
 
   // Service
   servicePorts?: ServicePortDefinition[];
@@ -207,6 +208,11 @@ export function database<TConfig>(
           ? descriptor.readinessProbe(config)
           : descriptor.readinessProbe;
 
+      const startupProbe =
+        typeof descriptor.startupProbe === "function"
+          ? descriptor.startupProbe(config)
+          : descriptor.startupProbe;
+
       const sts = builders.statefulSet(name, namespace, {
         appName: descriptor.slug,
         image: descriptor.image,
@@ -228,6 +234,7 @@ export function database<TConfig>(
         ],
         livenessProbe,
         readinessProbe,
+        startupProbe,
         securityContext: {
           fsGroup: descriptor.fsGroup ?? 1001,
           ...(descriptor.runAsUser !== undefined && {

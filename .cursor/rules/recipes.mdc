@@ -113,7 +113,7 @@ Run `docker compose -f docker-compose.local.yml exec web yarn typecheck` to veri
 
 **All steps in this phase are REQUIRED before completing a recipe task.** Do not present the recipe for review until every step passes. Recipes must be verified running in the local kind cluster.
 
-### 1. Seed the database
+### 1. Seed the database (first time only)
 
 ```bash
 docker compose -f docker-compose.local.yml exec web npx prisma db seed
@@ -121,83 +121,79 @@ docker compose -f docker-compose.local.yml exec web npx prisma db seed
 
 This creates the DB record and generates embeddings.
 
-### 2. Verify catalog API
+### 2. Run the smoke test
+
+This is the primary testing tool. It deploys the recipe, waits for all pods (including dependencies) to reach RUNNING, checks health, and reports structured diagnostics on failure.
+
+**Remote cluster (preferred):**
 
 ```bash
-docker compose -f docker-compose.local.yml exec web curl -s http://localhost:3000/api/catalog/{slug} | jq .slug
+yarn recipe:test:remote <slug> --fresh
 ```
 
-The new app should return its slug.
+This starts port-forwards to the remote cluster's DB and Redis, then runs the test. The remote worker processes the deployment. Health and web UI checks hit the real ingress URL — much more realistic than local port-forwards.
 
-### 3. Deploy to the local kind cluster
-
-This step is **mandatory**. Start the full local environment and deploy the recipe to verify it actually works end-to-end.
-
-#### Prerequisites
-- Docker Compose is running: `docker compose -f docker-compose.local.yml up -d`
-- Kind cluster exists: `kind create cluster --name mathison-dev` (if not already running)
-- Workspace namespace exists: check with `kubectl --context kind-mathison-dev get ns` and create if missing
-- Worker container is healthy: check `docker compose -f docker-compose.local.yml logs worker --tail=5`
-
-#### Deploy and verify
-Install via the browser UI (http://localhost:3000 → App Store → Install) or via the install API. Then verify:
+**Local kind cluster (fallback):**
 
 ```bash
-# Watch pods come up
-kubectl --context kind-mathison-dev get pods -n <namespace> -w
-
-# Check pod is 1/1 Running (not 0/1, not CrashLoopBackOff)
-kubectl --context kind-mathison-dev get pods -n <namespace>
-
-# If not ready, check logs for the actual error
-kubectl --context kind-mathison-dev logs <pod-name> -n <namespace> --tail=30
-
-# If crashing, describe for events
-kubectl --context kind-mathison-dev describe pod <pod-name> -n <namespace> | tail -20
+docker compose -f docker-compose.local.yml exec web yarn recipe:test <slug> --fresh
 ```
 
-**All pods must reach 1/1 Running.** If a pod fails:
-1. Read the logs to identify the root cause
-2. Fix the recipe (env vars, command, probes, bind address, etc.)
-3. Delete the failed deployment (K8s resources + DB record) and redeploy
-4. Repeat until all pods are healthy
+Flags (both modes):
+- `--fresh` — Remove any existing deployment first (clean slate). **Always use during development.**
+- `--cleanup` — Remove the deployment after a successful test
+- `--timeout <seconds>` — Readiness timeout (default: 300)
+- `--verbose` — Show pod logs even on success
 
-Common issues to watch for:
-- **Container binds to 127.0.0.1**: K8s probes can't reach it. Fix with config or command override to bind to `0.0.0.0`
-- **Wrong entrypoint/CMD**: Check the image's actual Dockerfile CMD before overriding `command`
-- **Missing namespace**: Kind cluster was recreated but namespace wasn't re-provisioned
-- **Image pull errors**: Verify the image tag exists on the registry
-- **Localhost-only auth/pairing**: Some apps auto-approve localhost connections but require device pairing or extra auth for remote access. Port-forward testing (localhost) masks this. Check docs for device auth, pairing, or trusted-origin settings and disable them in the recipe config when the gateway token already provides authentication
+**If FAILED:** Read the diagnostic output carefully — it includes pod status, container states, K8s events, current logs, and previous container logs. Fix the recipe and re-run.
 
-#### Verify deployment status in DB
+**If PASSED:** The pods are running and health checks pass. Proceed to step 3.
 
-```bash
-docker compose -f docker-compose.local.yml exec postgres psql -U mathison -d mathison \
-  -c "SELECT d.name, d.status FROM deployments d JOIN recipes r ON d.recipe_id = r.id WHERE r.slug = '{slug}';"
-```
-
-All related deployments (app + dependencies) should show `RUNNING`.
-
-### 4. Open the app and verify it works
+### 3. Verify the app works end-to-end
 
 If the app has a web UI (`hasWebUI: true`):
-1. Open the app's URL (check `deployment.url` or `http://localhost:<localPort>`)
+1. Open the app's URL (the smoke test shows the ingress URL on remote, or `http://localhost:<localPort>` locally)
 2. Verify the page loads — not a blank screen, not a connection error
 3. If the app requires credentials (gateway tokens, admin passwords), open the **Credentials** dialog on the app detail page and copy them
 4. Complete the app's initial setup (login, connect, configure) and verify core functionality works
 
 If the app is a database or cache:
 1. Use the **Connection Info** dialog to get credentials
-2. Test the connection (e.g., `psql`, `redis-cli`) from inside the worker container
+2. Test the connection (e.g., `psql`, `redis-cli`)
 
 **The recipe is not done until you've verified the app actually works, not just that pods are running.**
 
-### 5. Cleanup
+### 4. Cleanup
 
 ```bash
-# Remove via UI or delete K8s resources + DB records manually
-kubectl --context kind-mathison-dev delete all -l app.kubernetes.io/managed-by=mathison -n <namespace>
+# Remote
+yarn recipe:test:remote <slug> --fresh --cleanup
+
+# Local
+docker compose -f docker-compose.local.yml exec web yarn recipe:test <slug> --cleanup
 ```
+
+### Manual debugging (when the smoke test isn't enough)
+
+Sometimes you need to dig deeper than the smoke test output. These commands are useful for interactive debugging:
+
+```bash
+# Watch pods in real-time (adjust context for remote vs local)
+kubectl get pods -n <namespace> -w
+
+# Get pod logs
+kubectl logs <pod-name> -n <namespace> --tail=50
+
+# Describe pod for events and detailed status
+kubectl describe pod <pod-name> -n <namespace> | tail -30
+```
+
+Common issues to watch for:
+- **Container binds to 127.0.0.1**: K8s probes can't reach it. Fix with config or command override to bind to `0.0.0.0`
+- **Wrong entrypoint/CMD**: Check the image's actual Dockerfile CMD before overriding `command`
+- **Missing namespace**: Cluster was recreated but namespace wasn't re-provisioned
+- **Image pull errors**: Verify the image tag exists on the registry
+- **Localhost-only auth/pairing**: Some apps auto-approve localhost connections but require device pairing or extra auth for remote access. Port-forward testing (localhost) masks this. Check docs for device auth, pairing, or trusted-origin settings and disable them in the recipe config when the gateway token already provides authentication
 
 ## Phase 4: Validation Checklist
 
@@ -211,9 +207,8 @@ Before committing, verify ALL of the following:
 - [ ] AI hints accurate (summary, whenToSuggest, pairsWellWith)
 - [ ] Icon exists at `public/icons/{slug}.svg`
 - [ ] Category is appropriate and exists in the filter list
-- [ ] **All pods reached 1/1 Running on the local kind cluster** (Phase 3, step 3)
-- [ ] Deployment status is RUNNING in the database (Phase 3, step 3)
-- [ ] **App URL verified working end-to-end** — opened in browser, completed initial setup, core functionality confirmed (Phase 3, step 4)
+- [ ] **`yarn recipe:test <slug> --fresh` passes** (Phase 3, step 2)
+- [ ] **App URL verified working end-to-end** — opened in browser, completed initial setup, core functionality confirmed (Phase 3, step 3)
 
 ## Common Patterns
 

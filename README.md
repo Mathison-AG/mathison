@@ -339,6 +339,66 @@ docker compose -f docker-compose.local.yml down -v
 docker compose -f docker-compose.local.yml up --build
 ```
 
+## Deploying to a Remote Cluster from Local
+
+Skip the CI pipeline and deploy directly from your machine for faster iteration.
+
+### One-time setup
+
+1. **Log Docker into GHCR:**
+
+```bash
+echo "ghp_YOUR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+```
+
+You need a [Personal Access Token](https://github.com/settings/tokens) with the `write:packages` scope.
+
+2. **Point kubectl at your cluster:**
+
+```bash
+kubectl config use-context <your-cloud-context>
+```
+
+3. **Create your values file:**
+
+```bash
+cp values-dev.yaml.example values-dev.yaml
+```
+
+Edit `values-dev.yaml` and fill in your domain and secrets. The file is gitignored.
+
+### Deploy
+
+```bash
+# Full deploy — build all 3 images + push + helm upgrade
+./scripts/deploy-dev.sh
+
+# Only rebuild web (changed frontend/API code)
+./scripts/deploy-dev.sh web
+
+# Only rebuild worker (changed deployer/recipe code)
+./scripts/deploy-dev.sh worker
+
+# Rebuild web + worker, skip migrate
+./scripts/deploy-dev.sh web worker
+
+# Chart changes only — no image builds
+./scripts/deploy-dev.sh --chart-only
+
+# Dry run — preview what helm would render
+./scripts/deploy-dev.sh --dry-run
+```
+
+Images are tagged `dev-<git-sha>` and pushed to GHCR. The script runs `helm upgrade --install` using the local `./chart/` directory, so chart template changes take effect immediately without publishing.
+
+### Monitor the rollout
+
+```bash
+kubectl -n mathison get pods
+kubectl -n mathison rollout status deployment/mathison-web
+kubectl -n mathison logs -f deployment/mathison-web
+```
+
 ## Tech Stack
 
 | Layer | Technology |

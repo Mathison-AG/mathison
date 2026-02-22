@@ -34,6 +34,11 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 
 - **CLI first**: When testing features, use `docker compose -f docker-compose.local.yml exec web yarn chat "..."` instead of the browser. Only use the browser when explicitly told to or when testing UI-specific behavior. The CLI is faster and costs far fewer tokens.
 - **CLI supports debug mode**: Add `--debug` to show raw SSE events for debugging stream parsing issues.
+- **Recipe smoke test (remote — preferred)**: `yarn recipe:test:remote <slug> --fresh` — runs recipe test against the remote cluster. Wrapper script starts port-forwards to remote PostgreSQL + Redis, then runs recipe-test.ts locally. Remote worker processes the deployment. Health/web UI checks hit the real ingress URL. Requires `KUBECONFIG` env var (or `.env.remote` file) and `values-dev.yaml` for the DB password.
+- **Recipe smoke test (local — fallback)**: `docker compose -f docker-compose.local.yml exec web yarn recipe:test <slug> --fresh` — runs inside Docker against local kind cluster. Port-forward health checks may be unreliable.
+- **Recipe smoke test flags**: `--fresh` (clean slate, always use in dev), `--cleanup` (remove after success), `--timeout <s>` (default 300), `--verbose` (logs on success). Exit 0 on pass, 1 on fail.
+- **Recipe testing workflow**: Write recipe → typecheck → `yarn recipe:test:remote <slug> --fresh` → read diagnostic output if failed → fix → re-run. Only present for review after the smoke test passes.
+- **Remote test setup (one-time)**: (1) `yarn install` on host, (2) `npx prisma generate`, (3) create `.env.remote` with `KUBECONFIG=/path/to/remote/kubeconfig`. Then `yarn recipe:test:remote` works.
 - **Auth cookie name**: Auth.js v5 uses `authjs.session-token` (not `next-auth.session-token`).
 - **Deployment deletion**: Worker now deletes DB records on successful undeploy (not soft-delete to STOPPED).
 
@@ -160,6 +165,18 @@ Persistent scratchpad for runtime knowledge. Read every session. Keep it lean �
 - **Stale PVC gotcha**: When redeploying with same name, delete PVCs first — Bitnami PostgreSQL won't reinitialize with new passwords if data directory exists.
 - **Dockerfile.dev includes kubectl**: Installed in the Alpine image for worker to run port-forward commands.
 - **Port-forward for local access**: `kubectl port-forward svc/<svc-name> <local-port>:<svc-port> -n <ns>` — needed for kind clusters without ingress.
+
+## Self-Healing & Auto-Remediation
+
+- **Auto-diagnose trigger**: Worker enqueues `AUTO_DIAGNOSE` job whenever a deploy, upgrade, or health check fails. 15-second delay gives pods time to produce logs.
+- **Guard rails**: Max 3 auto-remediation attempts per deployment per hour. Tracked via `DeploymentEvent` count (action: `auto_remediation`).
+- **LLM-based reasoning**: Worker calls `generateObject()` with diagnostic snapshot (pod status, K8s events, current + previous logs, config, available settings). Returns structured `{ diagnosis, action, configChanges, userMessage }`.
+- **Safe actions only**: LLM can `change_settings` (bounded by Zod schema), `restart`, or `none`. Never auto-deletes/reinstalls.
+- **Lazy model loading**: Worker uses dynamic `import()` for `@ai-sdk/anthropic` / `@ai-sdk/openai` — only loaded when auto-diagnose actually runs.
+- **`diagnoseApp` tool (manual)**: Returns structured diagnostic data (pods, events, logs, previous logs, config, available settings) to the chat LLM. No more canned pattern matching.
+- **Previous container logs**: `getPodLogs(ns, pod, lines, previous=true)` — essential for CrashLoopBackOff where current container has no output yet. Returns `"(no previous container logs)"` gracefully on 400/404.
+- **`DetailedPodDiagnostics`**: Rich container-level info (state, reason, message, exitCode, lastState) beyond the basic `PodInfo`. Used by both manual diagnosis and auto-remediation.
+- **User notification**: Auto-remediation stores its `userMessage` in `deployment.errorMessage`. System prompt tells agent to check history for auto-fix attempts.
 
 ## Deployment Audit Trail
 

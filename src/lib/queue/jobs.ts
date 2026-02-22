@@ -42,6 +42,13 @@ export interface HealthCheckJobData {
   deploymentId: string;
 }
 
+// ─── Auto-diagnose jobs ───────────────────────────────────
+
+export interface AutoDiagnoseJobData {
+  deploymentId: string;
+  trigger: "deploy_failed" | "health_check_failed" | "upgrade_failed";
+}
+
 // ─── Job names ────────────────────────────────────────────
 
 export const JOB_NAMES = {
@@ -49,5 +56,6 @@ export const JOB_NAMES = {
   UNDEPLOY: "undeploy",
   UPGRADE: "upgrade",
   HEALTH_CHECK: "health-check",
+  AUTO_DIAGNOSE: "auto-diagnose",
   EMBED: "embed",
 } as const;

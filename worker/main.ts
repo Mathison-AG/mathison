@@ -14,6 +14,7 @@ import net from "net";
 import { Worker, Job } from "bullmq";
 import { connection } from "../src/lib/queue/connection";
 import { JOB_NAMES } from "../src/lib/queue/jobs";
+import { deploymentQueue } from "../src/lib/queue/queues";
 import { applyResources, deleteResources } from "../src/recipes/_base/apply";
 import { deleteStatefulSetPVCs } from "../src/lib/cluster/kubernetes";
 import { waitForReady } from "../src/lib/cluster/kubernetes";
@@ -30,12 +31,17 @@ import {
   recordHealthChanged,
   recordFailed,
 } from "../src/lib/deployer/events";
+import {
+  shouldAutoRemediate,
+  runAutoRemediation,
+} from "../src/lib/deployer/diagnostics";
 
 import type {
   DeployJobData,
   UndeployJobData,
   UpgradeJobData,
   HealthCheckJobData,
+  AutoDiagnoseJobData,
 } from "../src/lib/queue/jobs";
 import type { KubernetesResource } from "../src/recipes/_base/types";
 
@@ -303,6 +309,7 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
       });
 
       recordFailed({ deploymentId, error: failMsg });
+      enqueueAutoDiagnose(deploymentId, "deploy_failed");
 
       console.warn(`[worker] Deploy PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
@@ -321,6 +328,7 @@ async function handleDeploy(job: Job<DeployJobData>): Promise<void> {
     });
 
     recordFailed({ deploymentId, error: errorMessage.slice(0, 1000) });
+    enqueueAutoDiagnose(deploymentId, "deploy_failed");
 
     throw err;
   }
@@ -508,6 +516,7 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
       });
 
       recordFailed({ deploymentId, error: failMsg });
+      enqueueAutoDiagnose(deploymentId, "upgrade_failed");
 
       console.warn(`[worker] Upgrade PARTIAL: ${recipeSlug} applied but pods not ready`);
     }
@@ -526,10 +535,118 @@ async function handleUpgrade(job: Job<UpgradeJobData>): Promise<void> {
     });
 
     recordFailed({ deploymentId, error: errorMessage.slice(0, 1000) });
+    enqueueAutoDiagnose(deploymentId, "upgrade_failed");
 
     throw err;
   }
 }
+
+// ─── Auto-diagnose ────────────────────────────────────────
+
+/**
+ * Enqueue an auto-diagnose job if remediation is allowed for this deployment.
+ * Fire-and-forget — never blocks the caller.
+ */
+async function enqueueAutoDiagnose(
+  deploymentId: string,
+  trigger: AutoDiagnoseJobData["trigger"]
+): Promise<void> {
+  try {
+    const allowed = await shouldAutoRemediate(deploymentId);
+    if (!allowed) {
+      console.log(
+        `[worker] Auto-remediation skipped for ${deploymentId}: max attempts reached`
+      );
+      return;
+    }
+
+    await deploymentQueue.add(
+      JOB_NAMES.AUTO_DIAGNOSE,
+      { deploymentId, trigger } satisfies AutoDiagnoseJobData,
+      {
+        jobId: `auto-diagnose-${deploymentId}-${Date.now()}`,
+        delay: 15_000,
+      }
+    );
+    console.log(
+      `[worker] Auto-diagnose queued for ${deploymentId} (trigger: ${trigger})`
+    );
+  } catch (err) {
+    console.error(
+      `[worker] Failed to enqueue auto-diagnose:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
+/**
+ * Lazily load the LLM provider. Avoids importing @ai-sdk/* at worker startup
+ * (only needed when auto-diagnose actually runs).
+ */
+let _cachedModel: import("@ai-sdk/provider").LanguageModelV3 | null = null;
+
+async function loadModel(): Promise<import("@ai-sdk/provider").LanguageModelV3> {
+  if (_cachedModel) return _cachedModel;
+
+  const provider = process.env.LLM_PROVIDER || "anthropic";
+  const model = process.env.LLM_MODEL;
+
+  if (provider === "anthropic") {
+    const { anthropic } = await import("@ai-sdk/anthropic");
+    _cachedModel = anthropic(model || "claude-sonnet-4-20250514");
+  } else if (provider === "openai") {
+    const { openai } = await import("@ai-sdk/openai");
+    _cachedModel = openai(model || "gpt-4o");
+  } else {
+    throw new Error(`Auto-remediation not supported for LLM provider: ${provider}`);
+  }
+
+  return _cachedModel;
+}
+
+async function handleAutoDiagnose(
+  job: Job<AutoDiagnoseJobData>
+): Promise<void> {
+  const { deploymentId, trigger } = job.data;
+
+  console.log(
+    `[worker] Auto-diagnose: ${deploymentId} (trigger: ${trigger})`
+  );
+
+  const model = await loadModel();
+  const result = await runAutoRemediation(deploymentId, () => model);
+
+  if (result) {
+    console.log(
+      `[worker] Auto-diagnose complete: ${result.diagnosis} → ${result.action}`
+    );
+    if (result.userMessage) {
+      await storeUserNotification(deploymentId, result.userMessage);
+    }
+  } else {
+    console.log(`[worker] Auto-diagnose: no actionable result for ${deploymentId}`);
+  }
+}
+
+/**
+ * Store a notification message for the user to see in the UI.
+ * Uses the deployment's errorMessage field to surface auto-remediation messages.
+ */
+async function storeUserNotification(
+  deploymentId: string,
+  message: string
+): Promise<void> {
+  try {
+    await prisma.deployment.update({
+      where: { id: deploymentId },
+      data: { errorMessage: message },
+    });
+  } catch {
+    // Deployment may have been deleted
+  }
+}
+
+// ─── Health check ─────────────────────────────────────────
 
 async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
   const { deploymentId } = job.data;
@@ -584,6 +701,8 @@ async function handleHealthCheck(job: Job<HealthCheckJobData>): Promise<void> {
         healthy: false,
         reason,
       });
+
+      enqueueAutoDiagnose(deploymentId, "health_check_failed");
     }
   } catch (err) {
     console.error(`[worker] Health check error for ${deployment.name}:`, err);
@@ -728,6 +847,10 @@ export function startWorker(): void {
 
         case JOB_NAMES.HEALTH_CHECK:
           await handleHealthCheck(job as Job<HealthCheckJobData>);
+          break;
+
+        case JOB_NAMES.AUTO_DIAGNOSE:
+          await handleAutoDiagnose(job as Job<AutoDiagnoseJobData>);
           break;
 
         default:

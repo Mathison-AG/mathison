@@ -128,6 +128,7 @@ export interface StatefulSetSpec {
   args?: string[];
   livenessProbe?: ProbeDefinition;
   readinessProbe?: ProbeDefinition;
+  startupProbe?: ProbeDefinition;
   securityContext?: k8s.V1PodSecurityContext;
   containerSecurityContext?: k8s.V1SecurityContext;
   component?: string;
@@ -179,6 +180,9 @@ export function statefulSet(
       : undefined,
     readinessProbe: spec.readinessProbe
       ? buildProbe(spec.readinessProbe)
+      : undefined,
+    startupProbe: spec.startupProbe
+      ? buildProbe(spec.startupProbe)
       : undefined,
     securityContext: spec.containerSecurityContext,
     command: spec.command,
@@ -237,6 +241,7 @@ export interface DeploymentSpec {
   args?: string[];
   livenessProbe?: ProbeDefinition;
   readinessProbe?: ProbeDefinition;
+  startupProbe?: ProbeDefinition;
   securityContext?: k8s.V1PodSecurityContext;
   containerSecurityContext?: k8s.V1SecurityContext;
   component?: string;
@@ -289,6 +294,9 @@ export function deployment(
       : undefined,
     readinessProbe: spec.readinessProbe
       ? buildProbe(spec.readinessProbe)
+      : undefined,
+    startupProbe: spec.startupProbe
+      ? buildProbe(spec.startupProbe)
       : undefined,
     securityContext: spec.containerSecurityContext,
     command: spec.command,

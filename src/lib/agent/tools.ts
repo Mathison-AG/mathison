@@ -4,7 +4,8 @@ import { z } from "zod/v4";
 import { prisma } from "@/lib/db";
 import { searchRecipes } from "@/lib/catalog/service";
 import { getRecipeMetadataOrFallback } from "@/lib/catalog/metadata";
-import { getReleasePodStatus, getReleaseLogs } from "@/lib/cluster/kubernetes";
+import { getReleasePodStatus } from "@/lib/cluster/kubernetes";
+import { gatherDiagnosticSnapshot } from "@/lib/deployer/diagnostics";
 import {
   getRecipeDefinition,
   listRecipeDefinitions,
@@ -93,103 +94,60 @@ async function getK8sPodStatus(
   }
 }
 
-/** Get K8s pod logs for a deployment */
-async function getK8sPodLogs(
-  namespace: string,
-  deploymentName: string,
-  lines: number
-): Promise<string> {
-  try {
-    return await getReleaseLogs(namespace, deploymentName, lines);
-  } catch (err) {
-    console.error(`[getK8sPodLogs] Failed for ${deploymentName}:`, err);
-    return `Failed to retrieve logs: ${err instanceof Error ? err.message : "Unknown error"}`;
-  }
-}
+// ─── Diagnostic data helper ──────────────────────────────
 
-// ─── Log diagnosis helpers ───────────────────────────────
+/**
+ * Format a diagnostic snapshot into structured data for the chat LLM.
+ * The LLM receives all signals and reasons about them — no canned responses.
+ */
+function formatDiagnosticData(snapshot: import("@/lib/deployer/diagnostics").DiagnosticSnapshot) {
+  const podSummary = snapshot.pods.map((p) => ({
+    name: p.name,
+    phase: p.phase,
+    ready: p.ready,
+    restarts: p.restarts,
+    containers: p.containers.map((c) => ({
+      name: c.name,
+      state: c.state,
+      reason: c.stateReason ?? null,
+      message: c.stateMessage ?? null,
+      exitCode: c.exitCode ?? null,
+      restarts: c.restartCount,
+      lastTermination: c.lastState
+        ? { reason: c.lastState.reason, exitCode: c.lastState.exitCode }
+        : null,
+    })),
+    initContainers: p.initContainers.length > 0
+      ? p.initContainers.map((c) => ({
+          name: c.name,
+          state: c.state,
+          reason: c.stateReason ?? null,
+        }))
+      : undefined,
+  }));
 
-interface DiagnosisResult {
-  appName: string;
-  diagnosis: string;
-  suggestion: string | null;
-}
-
-/** Analyze raw logs and produce a plain-English diagnosis */
-function analyzeLogs(appName: string, logs: string, restarts: number): DiagnosisResult {
-  const lines = logs.split("\n").filter(Boolean);
-  const lowerLogs = logs.toLowerCase();
-
-  if (lowerLogs.includes("out of memory") || lowerLogs.includes("oom") || lowerLogs.includes("memory limit")) {
-    return {
-      appName,
-      diagnosis: `${appName} is running out of memory. It's been restarting because it needs more resources to handle its workload.`,
-      suggestion: "changeAppSettings to increase resources",
-    };
-  }
-
-  if (lowerLogs.includes("connection refused") || lowerLogs.includes("econnrefused")) {
-    return {
-      appName,
-      diagnosis: `${appName} is having trouble connecting to another app it depends on. The other app might still be starting up or may have stopped.`,
-      suggestion: "Check the status of dependent apps with listMyApps",
-    };
-  }
-
-  if (lowerLogs.includes("connection timeout") || lowerLogs.includes("etimedout") || lowerLogs.includes("timed out")) {
-    return {
-      appName,
-      diagnosis: `${appName} is experiencing slow connections. It's trying to reach something that isn't responding quickly enough.`,
-      suggestion: "Wait a minute and check again, or restart the app",
-    };
-  }
-
-  if (lowerLogs.includes("permission denied") || lowerLogs.includes("access denied") || lowerLogs.includes("authentication failed")) {
-    return {
-      appName,
-      diagnosis: `${appName} is having trouble with its credentials. This usually means a password or access token needs to be reset.`,
-      suggestion: "Try reinstalling the app to regenerate credentials",
-    };
-  }
-
-  if (lowerLogs.includes("disk full") || lowerLogs.includes("no space left") || lowerLogs.includes("enospc")) {
-    return {
-      appName,
-      diagnosis: `${appName} has run out of storage space. It can't save any more data until space is freed up.`,
-      suggestion: "changeAppSettings to increase storage, or clean up old data",
-    };
-  }
-
-  if (lowerLogs.includes("crashloopbackoff") || lowerLogs.includes("crash loop")) {
-    return {
-      appName,
-      diagnosis: `${appName} keeps crashing and restarting. This usually means it can't start properly — often due to a configuration issue or a missing dependency.`,
-      suggestion: "Check if all dependent apps are running, then try reinstalling",
-    };
-  }
-
-  if (restarts > 0) {
-    return {
-      appName,
-      diagnosis: `${appName} has restarted ${restarts} time${restarts > 1 ? "s" : ""} recently. The logs don't show a clear error, but it may be under heavy load or experiencing intermittent issues.`,
-      suggestion: restarts >= 3
-        ? "changeAppSettings to give it more resources"
-        : "Monitor it for a bit — occasional restarts can be normal",
-    };
-  }
-
-  if (lines.length < 5) {
-    return {
-      appName,
-      diagnosis: `${appName} doesn't have many logs yet. It may have just started or is running very quietly.`,
-      suggestion: null,
-    };
-  }
+  const warningEvents = snapshot.events
+    .filter((e) => e.type === "Warning")
+    .slice(0, 10)
+    .map((e) => `${e.reason}: ${e.message} (×${e.count})`);
 
   return {
-    appName,
-    diagnosis: `${appName} looks like it's running normally. The logs don't show any obvious issues.`,
-    suggestion: null,
+    appName: snapshot.displayName,
+    status: snapshot.status,
+    errorMessage: snapshot.errorMessage,
+    pods: podSummary,
+    warningEvents: warningEvents.length > 0 ? warningEvents : null,
+    logs: snapshot.logs.length > 2000
+      ? snapshot.logs.slice(-2000)
+      : snapshot.logs,
+    previousLogs: snapshot.previousLogs.startsWith("(no")
+      ? null
+      : snapshot.previousLogs.length > 1500
+        ? snapshot.previousLogs.slice(-1500)
+        : snapshot.previousLogs,
+    currentConfig: snapshot.config,
+    availableSettings: snapshot.availableSettings,
+    _hint: "Analyze pods, events, logs, and previous logs together to identify the root cause. Common patterns: exit code 137 = OOMKilled (increase memory_limit), CrashLoopBackOff + connection error = dependency down, ImagePullBackOff = wrong image. Suggest concrete fixes using changeAppSettings if applicable.",
   };
 }
 
@@ -566,7 +524,7 @@ export function getTools(tenantId: string, workspaceId: string) {
 
     diagnoseApp: tool({
       description:
-        "Look at an app's internal logs to figure out what's wrong. Read the logs yourself and explain the issue in plain language — never show raw logs to the user.",
+        "Gather detailed diagnostics for an app — pod states, events, logs, previous crash logs. Analyze all the data yourself to explain what's wrong in plain language. NEVER show raw logs, exit codes, or infrastructure details to the user.",
       inputSchema: z.object({
         appId: z.string().describe("The app's ID to diagnose"),
       }),
@@ -574,8 +532,7 @@ export function getTools(tenantId: string, workspaceId: string) {
         const deployment = await prisma.deployment.findFirst({
           where: { id: appId, tenantId },
           select: {
-            namespace: true,
-            name: true,
+            id: true,
             status: true,
             recipe: { select: { slug: true } },
           },
@@ -585,33 +542,21 @@ export function getTools(tenantId: string, workspaceId: string) {
           return { error: "App not found" };
         }
 
-        const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
-
         if (deployment.status === "PENDING") {
+          const recipeMeta = getRecipeMetadataOrFallback(deployment.recipe.slug);
           return {
             appName: recipeMeta.displayName,
-            diagnosis: `${recipeMeta.displayName} is still being set up. Give it a minute and check back.`,
-            suggestion: null,
+            status: "pending",
+            _hint: "App is still being set up. Tell the user to wait a minute.",
           };
         }
 
-        const k8sStatus = await getK8sPodStatus(
-          deployment.namespace,
-          deployment.name
-        );
-        const totalRestarts = k8sStatus.pods.reduce((sum, p) => sum + p.restarts, 0);
+        const snapshot = await gatherDiagnosticSnapshot(deployment.id);
+        if (!snapshot) {
+          return { error: "Could not gather diagnostics" };
+        }
 
-        const logs = await getK8sPodLogs(
-          deployment.namespace,
-          deployment.name,
-          100
-        );
-
-        return analyzeLogs(
-          recipeMeta.displayName,
-          logs,
-          totalRestarts
-        );
+        return formatDiagnosticData(snapshot);
       },
     }),
 
@@ -678,6 +623,15 @@ export function getTools(tenantId: string, workspaceId: string) {
               }
             } else if (e.action === "failed") {
               details = (newState.error as string) || null;
+            } else if (e.action === "auto_remediation") {
+              const remAction = newState.remediationAction as string | undefined;
+              const diag = newState.diagnosis as string | undefined;
+              const success = newState.success as boolean | undefined;
+              details = [
+                diag ? `Diagnosis: ${diag}` : null,
+                remAction ? `Action: ${remAction}` : null,
+                success !== undefined ? `Result: ${success ? "fix applied" : "could not fix automatically"}` : null,
+              ].filter(Boolean).join(". ");
             } else if (e.action === "health_changed") {
               details = (newState.reason as string) || null;
             } else if (e.action === "status_changed") {

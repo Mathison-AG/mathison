@@ -84,6 +84,7 @@ export interface CacheDescriptor<TConfig> {
   // Probes
   livenessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
   readinessProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
+  startupProbe?: ProbeDefinition | ((config: TConfig) => ProbeDefinition);
 
   // Service
   servicePorts?: ServicePortDefinition[];
@@ -216,6 +217,11 @@ export function cache<TConfig>(
           ? descriptor.readinessProbe(config)
           : descriptor.readinessProbe;
 
+      const startupProbe =
+        typeof descriptor.startupProbe === "function"
+          ? descriptor.startupProbe(config)
+          : descriptor.startupProbe;
+
       const commandResult = descriptor.command?.(ctx);
       const argsResult = descriptor.args?.(ctx);
 
@@ -245,6 +251,7 @@ export function cache<TConfig>(
             : undefined,
         livenessProbe,
         readinessProbe,
+        startupProbe,
         securityContext: {
           fsGroup: descriptor.fsGroup ?? 1001,
           ...(descriptor.runAsUser !== undefined && {
