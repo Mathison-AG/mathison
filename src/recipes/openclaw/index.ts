@@ -19,6 +19,8 @@ const configSchema = z.object({
   memory_request: z.string().default("512Mi"),
   cpu_limit: z.string().default("2"),
   memory_limit: z.string().default("2Gi"),
+  /** Anthropic API key (passed as ANTHROPIC_API_KEY). Add here to avoid OpenClaw's config form view issues. */
+  anthropic_api_key: z.string().optional(),
 });
 
 type OpenClawConfig = z.infer<typeof configSchema>;
@@ -54,6 +56,14 @@ function buildEnv(ctx: BuildContext<OpenClawConfig>): EnvVar[] {
     secretName,
     secretKey: "gateway_token",
   });
+
+  if (ctx.secrets["anthropic_api_key"]) {
+    env.push({
+      name: "ANTHROPIC_API_KEY",
+      secretName,
+      secretKey: "anthropic_api_key",
+    });
+  }
 
   return env;
 }
@@ -96,6 +106,8 @@ OpenClaw works with multiple AI providers:
 - **Cloud**: Claude (Anthropic), GPT (OpenAI), Grok (xAI)
 - **Local**: Ollama, vLLM — run models entirely on your hardware
 
+**Tip:** Add your Anthropic API key in this app's settings (ask the assistant to "add my Anthropic API key to OpenClaw" or use Change App Settings). This avoids the "Form view can't safely edit" warning in OpenClaw's own config editor.
+
 ### Extend with skills
 Browse **ClawHub** for 5,700+ community-built skills — from smart home control to calendar management to code generation.`,
   websiteUrl: "https://openclaw.ai",
@@ -108,6 +120,11 @@ Browse **ClawHub** for 5,700+ community-built skills — from smart home control
       description: "Token for authenticating with the OpenClaw Control UI",
       generate: true,
       length: 32,
+    },
+    anthropic_api_key: {
+      description: "Anthropic API key for Claude models (optional; add here to avoid OpenClaw config form view issues)",
+      generate: false,
+      fromConfig: "anthropic_api_key",
     },
   },
   dependencies: {

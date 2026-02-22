@@ -140,7 +140,11 @@ export async function initiateDeployment(params: {
   });
 
   // 6. Generate secrets from recipe definition
-  const secrets = generateSecretsFromDefinition(recipe.secrets);
+  const secrets = generateSecretsFromDefinition(
+    recipe.secrets,
+    undefined,
+    validatedConfig
+  );
 
   // 7. Build K8s resources
   const ingressCtx = buildIngressContext(workspace.slug);
@@ -282,7 +286,11 @@ export async function initiateUpgrade(params: {
     deployment.name,
     recipe
   );
-  const secrets = generateSecretsFromDefinition(recipe.secrets, existingSecrets);
+  const secrets = generateSecretsFromDefinition(
+    recipe.secrets,
+    existingSecrets,
+    validatedConfig
+  );
 
   // Re-resolve existing dependencies
   const depInfo = await resolveExistingDependencies({

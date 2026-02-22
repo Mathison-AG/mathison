@@ -31,10 +31,12 @@ export function generatePassword(length = 24): string {
 /**
  * Generate secrets from a recipe's typed SecretDefinition map.
  * Reuses existing secrets if provided (for upgrades).
+ * When fromConfig is set, uses config[fromConfig] (user-provided); omit if empty.
  */
 export function generateSecretsFromDefinition(
   secretDefs: Record<string, SecretDefinition>,
-  existingSecrets?: Record<string, string>
+  existingSecrets?: Record<string, string>,
+  config?: Record<string, unknown>
 ): Record<string, string> {
   const secrets: Record<string, string> = {};
 
@@ -45,8 +47,17 @@ export function generateSecretsFromDefinition(
       continue;
     }
 
+    // User-provided from config
+    if (def.fromConfig && config) {
+      const val = config[def.fromConfig];
+      if (val != null && String(val).trim() !== "") {
+        secrets[key] = String(val).trim();
+      }
+      continue;
+    }
+
     // Auto-generate if definition says so
-    if (def.generate) {
+    if (def.generate !== false) {
       secrets[key] = generatePassword(def.length || 24);
     }
   }

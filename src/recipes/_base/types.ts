@@ -26,9 +26,14 @@ export type KubernetesResource =
 export interface SecretDefinition {
   description: string;
   /** Auto-generate a cryptographically random value */
-  generate: boolean;
+  generate?: boolean;
   /** Length of generated value (default: 24) */
   length?: number;
+  /**
+   * Use config[fromConfig] as the secret value (user-provided).
+   * When set, generate is ignored. Omit from K8s secret if config value is empty.
+   */
+  fromConfig?: string;
 }
 
 // ─── Dependency Definition ────────────────────────────────

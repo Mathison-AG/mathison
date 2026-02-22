@@ -245,7 +245,11 @@ async function deployDependency(params: {
   const parsedConfig = depRecipe.configSchema.parse(depConfig);
 
   // Generate secrets for the dependency
-  const secrets = generateSecretsFromDefinition(depRecipe.secrets);
+  const secrets = generateSecretsFromDefinition(
+    depRecipe.secrets,
+    undefined,
+    depConfig as Record<string, unknown>
+  );
 
   // Build K8s resources
   const buildCtx: BuildContext<unknown> = {
