@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.12...mathison-v0.1.13) (2026-02-22)
+
+
+### Bug Fixes
+
+* openclaw fixes ([4239b08](https://github.com/Mathison-AG/mathison/commit/4239b08d416666592dc80da1e99b99e3e8172f43))
+
 ## [0.1.12](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.11...mathison-v0.1.12) (2026-02-22)
 
 
