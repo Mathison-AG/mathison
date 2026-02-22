@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.11...mathison-v0.1.12) (2026-02-22)
+
+
+### Features
+
+* better recipe development ([a707e36](https://github.com/Mathison-AG/mathison/commit/a707e36b5092756c9b9b0a82bfe24ec23a751709))
+
 ## [0.1.11](https://github.com/Mathison-AG/mathison/compare/mathison-v0.1.10...mathison-v0.1.11) (2026-02-21)
 
 
